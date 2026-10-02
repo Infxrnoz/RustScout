@@ -1,4 +1,3 @@
-// Map grid + monument naming shared by the event tracker and the chat bot (public/app.js has a browser copy).
 const GRID = 146.25;
 
 const correctedSize = size => {
@@ -45,7 +44,6 @@ const monumentName = token => {
         .replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, c => c.toUpperCase());
 };
 
-// "Launch Site (L4)" when within ~1.5 grid cells of a monument, otherwise just the grid.
 const describe = (x, y, mapMeta) => {
     if (!mapMeta) return '';
     const grid = gridOf(x, y, mapMeta.mapSize);

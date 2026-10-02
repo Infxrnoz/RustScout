@@ -1,7 +1,5 @@
 'use strict';
 
-// Crossbreeding model: for each of the 6 slots, every neighbouring clone adds its gene's weight
-// (G/Y/H = 0.6, W/X = 1.0). The heaviest gene wins; genes tied for heaviest are a coin flip.
 (() => {
     const WEIGHT = { G: 0.6, Y: 0.6, H: 0.6, W: 1, X: 1 };
     const GENES = 'GYHWX';
@@ -19,7 +17,6 @@
         return c;
     };
 
-    // Returns per-slot arrays of possible winning genes.
     function cross(clones) {
         const slots = [];
         for (let i = 0; i < 6; i++) {
@@ -31,7 +28,6 @@
         return slots;
     }
 
-    // Probability of hitting the target counts exactly, and expected count distance.
     function evaluate(slots, target) {
         const tc = counts(target);
         let pHit = 0, eDist = 0;

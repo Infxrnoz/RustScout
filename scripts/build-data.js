@@ -1,4 +1,3 @@
-// Extracts the item table and raid durability data from a rustplusplus checkout into ./data.
 const fs = require('fs');
 const path = require('path');
 
@@ -74,7 +73,6 @@ for (const [category, sourceName, kind, label] of TARGETS) {
 
     const costs = {};
     for (const [key, toolId] of Object.entries(TOOLS)) {
-        // Building blocks list a hard (outside) and soft (inside) side; raiders hit the hard side.
         const row = rows.find(r => r.toolId === toolId && r.group === 'explosive' && r.which !== 'soft');
         if (!row) continue;
         costs[key] = { qty: row.quantity, time: row.time };
@@ -93,7 +91,6 @@ for (const [category, sourceName, kind, label] of TARGETS) {
 
 fs.writeFileSync(path.join(out, 'raid.json'), JSON.stringify({ tools, targets }, null, 1));
 
-/* ---- crafting, recycling and decay tables for the tools tabs and the chat bot ---- */
 const read = name => JSON.parse(fs.readFileSync(path.join(src, name), 'utf8'));
 const craftSrc = read('rustlabsCraftData.json');
 const recycleSrc = read('rustlabsRecycleData.json');
@@ -104,7 +101,6 @@ const craft = {};
 for (const [id, c] of Object.entries(craftSrc)) {
     if (!c?.ingredients?.length) continue;
     craft[id] = { i: c.ingredients.map(x => [x.id, x.quantity]), t: c.time, wb: Number(items[c.workbench]?.name.match(/Level (\d)/)?.[1]) || null };
-    // How many one craft makes (gunpowder 10, pistol ammo 4…), from the game files via extract-game-data.py.
     if (yields[id] > 1) craft[id].n = yields[id];
 }
 

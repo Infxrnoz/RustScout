@@ -1,7 +1,5 @@
 'use strict';
 
-// Your own map pins and decay timers. Stored by the backend per server, so decay alerts still
-// reach Discord when no browser is open.
 const Pins = (() => {
     const COLORS = ['#e4572e', '#f0c23c', '#7cc043', '#3fa9f5', '#9b6bff', '#ff5fa2', '#ffffff'];
     const ICONS = { pin: '📍', home: '🏠', skull: '💀', loot: '💰', raid: '💣', eye: '👁', flag: '🚩', star: '⭐' };
@@ -67,7 +65,6 @@ const Pins = (() => {
         try { await api(`/api/pins/${id}`, { method: 'DELETE' }); } catch (e) { toast({ kind: 'alarm', label: 'Pin', text: e.message }); }
     }
 
-    // Small form inside a map popup, for a new pin (at pos) or editing an existing one.
     function openForm(kind, pos, existing) {
         const p = existing || {};
         const isDecay = kind === 'decay';
@@ -94,7 +91,6 @@ const Pins = (() => {
         };
     }
 
-    // Right-click (long-press on touch) drops a pin or a decay timer.
     map.on('contextmenu', e => {
         if (!usable()) return;
         const pos = fromLatLng(e.latlng);
@@ -103,7 +99,6 @@ const Pins = (() => {
         popup.getElement().querySelectorAll('[data-k]').forEach(b => b.onclick = () => openForm(b.dataset.k, pos));
     });
 
-    // One-shot "click the map to place this" mode, used by the decay list's Place button.
     function pick(onPicked) {
         picking = onPicked;
         map.getContainer().classList.add('picking');

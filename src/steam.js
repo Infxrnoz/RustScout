@@ -1,5 +1,3 @@
-// Public Steam profile lookups for the Threats tab. The XML profile needs no key; the Web API
-// (optional steamApiKey) adds Rust hours and game-ban details.
 const cache = new Map();
 const TTL = 6 * 3600e3;
 
@@ -20,7 +18,7 @@ async function profile(steamId, apiKey) {
         data.vacBanned = tag(xml, 'vacBanned') === '1';
         data.memberSince = tag(xml, 'memberSince');
         data.private = tag(xml, 'privacyState') !== 'public';
-    } catch { /* steam unreachable, keep nulls */ }
+    } catch {  }
 
     if (apiKey) {
         const api = async url => (await fetch(url, { signal: AbortSignal.timeout(8000) })).json();
@@ -47,8 +45,6 @@ async function profile(steamId, apiKey) {
     return data;
 }
 
-// Current status for up to 100 Steam IDs: persona name, avatar, online state, and (for public profiles in a game)
-// the game id and server address they're connected to.
 async function summaries(ids, apiKey) {
     if (!apiKey || !ids.length) return {};
     const out = {};
@@ -67,7 +63,6 @@ async function summaries(ids, apiKey) {
     return out;
 }
 
-// Steam profile URL, SteamID64 or vanity name -> SteamID64 (vanity needs the API key). Returns null if not a Steam reference.
 async function resolveId(input, apiKey) {
     const s = String(input).trim();
     const direct = s.match(/(?:steamcommunity\.com\/profiles\/)?(7656\d{13})/);

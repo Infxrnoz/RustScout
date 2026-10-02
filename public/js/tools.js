@@ -1,7 +1,6 @@
 'use strict';
 
 (() => {
-    /* ---------- decay tracker ---------- */
 
     const needServer = () => {
         if (S.snapshot && !S.preview) return true;
@@ -91,7 +90,6 @@
         }
     });
 
-    // Timers from older versions lived only in this browser; move them to the server once.
     async function migrateLocalTimers() {
         const old = store.get('decayTimers', []);
         if (!old.length || !S.snapshot || S.preview) return;
@@ -102,8 +100,6 @@
     bus.on('pins', renderTimers);
     bus.on('reset', () => { renderTimers(); migrateLocalTimers(); });
     bus.on('mapLoaded', renderTimers);
-
-    /* ---------- crafting calculator ---------- */
 
     const craftable = () => Object.keys(S.game.craft).filter(id => S.items[id]);
 

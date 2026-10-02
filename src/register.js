@@ -1,10 +1,6 @@
-// Registers this PC for Rust+ pairing notifications and links a Steam account. Same steps as
-// `npx rustplus fcm-register`. Getting the Steam login token is left to the caller: the command-line
-// setup opens a throwaway Chrome/Edge profile, the desktop app opens its own login window.
 const crypto = require('crypto');
 const AndroidFCM = require('@liamcottle/push-receiver/src/android/fcm');
 
-// Public identifiers of the official Rust+ Android app (the same values rustplus.js uses).
 const RUST_PLUS = {
     apiKey: 'AIzaSyB5y2y-Tzqb4-I4Qnlsh_9naYv_TD8pCvY',
     projectId: 'rust-companion-app',
@@ -22,7 +18,6 @@ async function post(url, body) {
     return res.json().catch(() => ({}));
 }
 
-// getSteamToken() → Promise<string>; progress(step, text) is optional. Returns the rustplus.config.json contents.
 async function register(getSteamToken, progress = () => {}) {
     progress(1, 'Registering this PC for push notifications…');
     const c = RUST_PLUS;

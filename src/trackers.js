@@ -4,7 +4,6 @@ const { describe } = require('./geo');
 const EVENT_TYPES = { 2: 'explosion', 4: 'ch47', 5: 'cargo', 6: 'crate', 8: 'heli', 9: 'vendor' };
 const EVENT_NAMES = { explosion: 'Explosion', ch47: 'Chinook', cargo: 'Cargo Ship', crate: 'Locked Crate', heli: 'Patrol Helicopter', vendor: 'Travelling Vendor' };
 
-// Online/offline/death/respawn transitions of team members, plus where each death happened.
 class TeamTracker {
     constructor(file) {
         this.store = new Persisted(file, { deaths: [], log: [], members: {} });
@@ -16,7 +15,7 @@ class TeamTracker {
         const members = team?.members || [];
         const prev = this.prev;
         this.prev = Object.fromEntries(members.map(m => [m.steamId, m]));
-        if (!prev) return out; // first sample only establishes the baseline
+        if (!prev) return out;
 
         for (const m of members) {
             const before = prev[m.steamId];
@@ -34,7 +33,6 @@ class TeamTracker {
                 out.push({ kind: 'teamOffline', name: m.name, steamId: m.steamId, text: `${m.name} went offline` });
             }
             if (before.isAlive && !m.isAlive) {
-                // The dead member's reported position is their corpse; fall back to the last live sample.
                 const x = m.x || before.x;
                 const y = m.y || before.y;
                 const where = describe(x, y, mapMeta);
@@ -57,7 +55,6 @@ class TeamTracker {
     }
 }
 
-// Spawn/despawn of map events, with "last seen" timers per event type.
 class EventTracker {
     constructor(file) {
         this.store = new Persisted(file, { active: {}, last: {}, log: [] });
@@ -80,7 +77,7 @@ class EventTracker {
                 continue;
             }
             active[id] = { id, type, since: now, x: m.x, y: m.y, where: describe(m.x, m.y, mapMeta) };
-            if (!this.primed) continue; // events already running when we connected aren't news
+            if (!this.primed) continue;
             const last = this.store.data.last[type] ??= {};
             last.spawn = now;
             out.push({ kind: type, x: m.x, y: m.y, text: `${EVENT_NAMES[type]} ${type === 'explosion' ? 'at' : 'spawned at'} ${active[id].where}` });
@@ -111,7 +108,6 @@ class EventTracker {
     }
 }
 
-// Server population samples for the pop graph (7 days, one sample per minute at most).
 class PopTracker {
     constructor(file) {
         this.store = new Persisted(file, { samples: [] });

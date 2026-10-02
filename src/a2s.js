@@ -1,4 +1,3 @@
-// Minimal Steam server query (A2S_INFO + A2S_RULES) over UDP, with challenge and split-packet handling.
 const dgram = require('dgram');
 
 const HEADER = Buffer.from([0xFF, 0xFF, 0xFF, 0xFF]);
@@ -22,11 +21,10 @@ function exchange(ip, port, first, build, timeout = 3000) {
         sock.on('message', msg => {
             const head = msg.readInt32LE(0);
             if (head === -1) {
-                if (msg[4] === 0x41) return sock.send(build(msg.subarray(5, 9)), port, ip); // challenge
+                if (msg[4] === 0x41) return sock.send(build(msg.subarray(5, 9)), port, ip);
                 return finish(null, msg.subarray(4));
             }
             if (head === -2) {
-                // Source split packet: id(4) total(1) number(1) size(2) payload
                 const total = msg[8];
                 parts[msg[9]] = msg.subarray(12);
                 if (Object.keys(parts).length === total) {
@@ -55,17 +53,17 @@ async function info(ip, port) {
     const b = await exchange(ip, port, INFO, c => Buffer.concat([INFO, c]));
     if (b[0] !== 0x49) throw new Error('unexpected info reply');
     const r = new Reader(b, 1);
-    r.byte(); // protocol
+    r.byte();
     const out = { name: r.string(), map: r.string(), folder: r.string(), game: r.string() };
-    r.short(); // app id
+    r.short();
     out.players = r.byte();
     out.maxPlayers = r.byte();
-    r.byte(); r.byte(); r.byte(); r.byte(); r.byte(); // bots, type, os, visibility, vac
+    r.byte(); r.byte(); r.byte(); r.byte(); r.byte();
     out.version = r.string();
     const edf = r.byte();
     if (edf & 0x80) { out.gamePort = r.short(); }
-    if (edf & 0x10) { r.off += 8; } // steam id
-    if (edf & 0x40) { r.short(); r.string(); } // spectator
+    if (edf & 0x10) { r.off += 8; }
+    if (edf & 0x40) { r.short(); r.string(); }
     if (edf & 0x20) { out.keywords = r.string(); }
     return out;
 }
@@ -80,7 +78,6 @@ async function rules(ip, port) {
     return out;
 }
 
-// A2S_PLAYER: names currently connected and how long they've been on (seconds).
 const PLAYERS = challenge => Buffer.concat([HEADER, Buffer.from([0x55]), challenge]);
 async function players(ip, port) {
     const b = await exchange(ip, port, PLAYERS(Buffer.from([0xFF, 0xFF, 0xFF, 0xFF])), PLAYERS);
@@ -89,7 +86,7 @@ async function players(ip, port) {
     const count = r.byte();
     const out = [];
     for (let i = 0; i < count && r.off < b.length; i++) {
-        r.byte(); // index
+        r.byte();
         const name = r.string();
         const score = b.readInt32LE(r.off); r.off += 4;
         const seconds = b.readFloatLE(r.off); r.off += 4;

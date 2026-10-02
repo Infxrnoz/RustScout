@@ -5,10 +5,8 @@ const COLORS = ['#e4572e', '#f0c23c', '#7cc043', '#3fa9f5', '#9b6bff', '#ff5fa2'
 const ICONS = ['pin', 'home', 'skull', 'loot', 'raid', 'eye', 'flag', 'star'];
 const clean = (s, n) => String(s ?? '').trim().slice(0, n);
 const coord = v => v !== null && v !== '' && v !== undefined && Number.isFinite(+v) ? Math.round(+v * 10) / 10 : null;
-// A position is both coordinates or none.
 const position = (x, y) => coord(x) !== null && coord(y) !== null ? { x: coord(x), y: coord(y) } : { x: null, y: null };
 
-// Map pins and decay timers for one server. Decay timers can also be list-only (no position).
 class Pins {
     constructor(file) {
         this.store = new Persisted(file, { pins: [] });
@@ -34,7 +32,6 @@ class Pins {
         return pin;
     }
 
-    // Seconds left = full decay time × current HP / max HP, unless an explicit end time was given.
     decay(body, table) {
         const d = table.find(x => x.name.toLowerCase() === String(body.name || '').trim().toLowerCase());
         if (!d) throw new Error('Unknown structure — pick one from the list');
@@ -62,7 +59,6 @@ class Pins {
         if (this.list.length !== before) this.store.flush();
     }
 
-    // Decay timers that just crossed the warning threshold (each warns once until its HP is re-entered).
     due(warnMs) {
         const out = [];
         for (const p of this.list) {

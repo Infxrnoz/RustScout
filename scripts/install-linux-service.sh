@@ -1,6 +1,4 @@
 #!/bin/sh
-# Installs RustScout as a systemd user service so it runs 24/7 and restarts on crash/reboot.
-# Run from the app folder:  sh scripts/install-linux-service.sh
 set -e
 APP="$(cd "$(dirname "$0")/.." && pwd)"
 NODE="$(command -v node || true)"
@@ -25,7 +23,6 @@ UNIT
 
 systemctl --user daemon-reload
 systemctl --user enable --now rustscout.service
-# Keep user services running after you log out of SSH.
 loginctl enable-linger "$USER" 2>/dev/null || sudo loginctl enable-linger "$USER"
 echo
 echo "Running. Logs:    journalctl --user -u rustscout -f"

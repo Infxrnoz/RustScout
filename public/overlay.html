@@ -25,7 +25,6 @@
 <script src="/js/crosshair.js"></script>
 <script>
 'use strict';
-// In-game overlay: a click-through, always-on-top window over the game. Shows a custom crosshair and a small HUD.
 const S = { settings: { hud: false, hudCorner: 'top-right', crosshair: {} }, info: null, time: null, pins: [], status: null, alerts: [] };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const dur = ms => {
@@ -41,7 +40,6 @@ function drawCross() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, innerWidth, innerHeight);
     const c = S.settings.crosshair || {};
-    // The app sends the monitor's true centre in this window's coordinates (Windows may shrink the window around the taskbar).
     const ctr = S.settings.center || { x: innerWidth / 2, y: innerHeight / 2 };
     if (c.on) drawCrosshair(ctx, Math.round(ctr.x), Math.round(ctr.y), c);
 }
@@ -101,7 +99,6 @@ function apply(settings) {
     drawCross();
     drawHud();
 }
-// The app pushes settings (with the screen centre) as soon as this window has loaded, and on every change.
 window.desktop?.onOverlay(apply);
 addEventListener('resize', drawCross);
 setInterval(drawHud, 1000);

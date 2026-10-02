@@ -1,5 +1,3 @@
-﻿// Builds dist/RustScout.zip for sharing. Leaves out anything personal:
-// config.json (API keys, webhook), rustplus.config.json (your Rust+ login), paired servers and tracked history.
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -26,7 +24,6 @@ for (const rel of INCLUDE) {
 }
 
 const zip = path.join(DIST, 'RustScout.zip');
-// Windows 10+ ships bsdtar, which writes .zip with -a.
 execFileSync('tar', ['-a', '-c', '-f', zip, '-C', DIST, 'RustScout']);
 fs.rmSync(STAGE, { recursive: true, force: true });
 console.log(`Built ${path.relative(ROOT, zip)} (${Math.round(fs.statSync(zip).size / 1024)} KB)`);

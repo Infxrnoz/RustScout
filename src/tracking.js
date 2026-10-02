@@ -1,6 +1,3 @@
-// Tracked groups: watch other players (enemies, neighbours) for when they're on your server.
-// Two signals, combined: the server's public player list (names + time connected, no key needed) and
-// Steam's player summaries (needs the Steam key; public profiles also report the server they're playing on).
 const crypto = require('crypto');
 const { Persisted } = require('./persist');
 const a2s = require('./a2s');
@@ -16,8 +13,8 @@ class Tracking {
         this.getServer = getServer;
         this.getKey = getKey;
         this.serverPlayers = [];
-        this.playersFrom = null;   // which server the list belongs to
-        this.playersAt = 0;        // when it was last read successfully
+        this.playersFrom = null;   
+        this.playersAt = 0;        
         this.summaries = {};
         this.lastPoll = 0;
         this.error = null;
@@ -75,7 +72,6 @@ class Tracking {
             this.playersFrom = addr;
             this.playersAt = Date.now();
         } else if (!addr || this.playersFrom !== addr || Date.now() - this.playersAt > 5 * 60e3) {
-            // No server, a different server, or no answer for 5 minutes: an old list would keep people "here" forever.
             this.serverPlayers = [];
         }
         if (sums) this.summaries = { ...this.summaries, ...sums };

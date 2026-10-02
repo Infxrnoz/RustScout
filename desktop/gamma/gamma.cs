@@ -1,13 +1,3 @@
-// RustScout night vision helper. Brightens the whole display for dark nights in game, the way graphics-driver
-// gamma/brightness sliders do. It never touches a game: it changes what Windows sends to the monitor.
-//
-//   gamma.exe --serve     stays running; reads lines "<gamma> <lift>" on stdin, answers one JSON line each.
-//                         "1 0" = normal. Closing stdin (or the app quitting/crashing) restores normal.
-//   gamma.exe <gamma> [lift]   one-shot (classic gamma ramp only).
-//
-// Two methods: the classic display gamma ramp (a true curve that lifts shadows), and where Windows refuses that
-// (some driver/Windows combinations do), the full-screen colour filter Windows Magnifier uses (gain + offset).
-// The filter only lasts while this process runs, which is also what makes it safe.
 using System;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -43,15 +33,13 @@ static class Gamma
         {
             double x = i / 255.0;
             double boosted = lift + (1 - lift) * Math.Pow(x, 1.0 / gamma);
-            double y = x + (boosted - x) * strength; // strength 0 = normal, 1 = full effect
+            double y = x + (boosted - x) * strength;
             ushort v = (ushort)Math.Max(0, Math.Min(65535, Math.Round(y * 65535)));
             r.Red[i] = r.Green[i] = r.Blue[i] = v;
         }
         return r;
     }
 
-    // Classic gamma ramp on every monitor; Windows rejects extreme curves, so ease off until accepted.
-    // Returns the strength applied on the weakest monitor, or -1 if any monitor refused completely.
     static double TryRamp(double gamma, double lift)
     {
         bool reset = gamma == 1.0 && lift == 0.0;
@@ -75,7 +63,6 @@ static class Gamma
         return total > 0 && done == total ? worst : -1;
     }
 
-    // Colour filter: out = in × gain + offset, the closest linear match to the gamma level.
     static bool SetFilter(double gamma, double lift)
     {
         if (!magReady) magReady = MagInitialize();
@@ -104,7 +91,7 @@ static class Gamma
         double s = TryRamp(gamma, lift);
         if (s >= 0)
         {
-            if (filterOn) SetFilter(1, 0); // switching methods: drop the filter
+            if (filterOn) SetFilter(1, 0);
             return "{\"ok\":true,\"method\":\"gamma\",\"strength\":" + s.ToString("0.00", Inv) + "}";
         }
         if (SetFilter(gamma, lift)) return "{\"ok\":true,\"method\":\"filter\",\"strength\":1}";
@@ -133,7 +120,7 @@ static class Gamma
                 Console.WriteLine(Apply(g, l));
                 Console.Out.Flush();
             }
-            Restore(); // stdin closed (app quit or crashed) → back to normal
+            Restore();
             return 0;
         }
         double gamma = args.Length > 0 ? double.Parse(args[0], Inv) : 1.0;

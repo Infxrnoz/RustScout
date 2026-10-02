@@ -1,4 +1,3 @@
-// In-game team chat commands. Replies are kept short: Rust+ team messages are cut off around 128 chars.
 const ITEMS = require('../data/items.json');
 const GAME = require('../data/game.json');
 const RAID = require('../data/raid.json');
@@ -13,7 +12,6 @@ const dur = ms => {
     return `${m}m ${s % 60}s`;
 };
 
-// Best item match: exact name, then shortname, then prefix, then substring (shortest name wins).
 function findItem(query, pool = Object.keys(ITEMS)) {
     const q = query.trim().toLowerCase();
     if (!q) return null;
@@ -29,7 +27,6 @@ function findItem(query, pool = Object.keys(ITEMS)) {
     return scored[0]?.[2] ?? null;
 }
 
-// Quantity is the last word if it's a number (1–10,000; anything bigger is a typo or a joke).
 const splitQty = args => {
     const last = args[args.length - 1];
     if (args.length > 1 && /^\d+$/.test(last)) return [args.slice(0, -1).join(' '), Math.min(10000, Math.max(1, Number(last)))];
@@ -39,7 +36,6 @@ const NO_TEAM = 'Team info not loaded yet';
 
 const name = id => ITEMS[id]?.n ?? id;
 
-// Since 6 Aug 2026 Rust+ no longer sends shops or map events; say so instead of "nothing found".
 const NO_MARKERS = 'Facepunch removed shops/events from Rust+ (6 Aug 2026)';
 const markersGone = markers => !markers.some(m => m.type !== 1);
 
@@ -86,7 +82,6 @@ const COMMANDS = {
         const id = findItem(q, Object.keys(GAME.craft));
         if (!id) return `No recipe for "${q}"`;
         const r = GAME.craft[id];
-        // Some recipes make several per craft (gunpowder 10, pistol ammo 4).
         const times = Math.ceil(n / (r.n || 1));
         return `${n}x ${name(id)}: ${r.i.map(([i, qty]) => `${qty * times} ${name(i)}`).join(', ')}${r.n > 1 ? ` (${times} crafts)` : ''}${r.wb ? ` (WB${r.wb})` : ''}`;
     },

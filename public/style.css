@@ -36,7 +36,6 @@ code:hover { background: var(--accent); }
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; }
 
-/* ================= top bar ================= */
 .topbar {
     position: relative; z-index: 1100; height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 12px;
     background: linear-gradient(180deg, #151517, #0f0f10); border-bottom: 1px solid var(--line);
@@ -46,7 +45,6 @@ code:hover { background: var(--accent); }
 .brand em { font-style: normal; color: var(--accent); margin: 0 4px; text-shadow: 0 0 14px var(--accent-glow); }
 .brand .mark, .big-mark {
     width: 18px; height: 18px; background: var(--accent);
-    /* RustScout map-pin mark */
     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 1a8.6 8.6 0 0 0-8.6 8.6C3.4 16 12 23 12 23s8.6-7 8.6-13.4A8.6 8.6 0 0 0 12 1zm0 5.2a3.4 3.4 0 1 1 0 6.8 3.4 3.4 0 0 1 0-6.8z'/%3E%3C/svg%3E") center / contain no-repeat;
             mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 1a8.6 8.6 0 0 0-8.6 8.6C3.4 16 12 23 12 23s8.6-7 8.6-13.4A8.6 8.6 0 0 0 12 1zm0 5.2a3.4 3.4 0 1 1 0 6.8 3.4 3.4 0 0 1 0-6.8z'/%3E%3C/svg%3E") center / contain no-repeat;
     box-shadow: 0 0 18px var(--accent-glow); animation: breathe 3s ease-in-out infinite;
@@ -87,7 +85,6 @@ code:hover { background: var(--accent); }
 .chip span { font: 500 11px var(--font); color: var(--muted); }
 @keyframes pop-in { from { transform: scale(.7); opacity: 0; } }
 
-/* ================= layout ================= */
 .layout { position: relative; display: flex; height: calc(100% - 46px); }
 .rail {
     width: 50px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0;
@@ -218,7 +215,6 @@ select { width: auto; padding-right: 6px; }
 .dropdown summary b { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 11px; }
 #tool-list { padding: 2px 10px 8px; }
 
-/* ---- raid ---- */
 .raid-cat { margin-top: 12px; font: 700 11px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .raid-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 5px; }
 .tile {
@@ -249,7 +245,6 @@ select { width: auto; padding-right: 6px; }
 .breakdown td { padding: 4px 2px; border-bottom: 1px solid var(--line); }
 .breakdown td:last-child { text-align: right; color: var(--muted); }
 
-/* ---- events ---- */
 .timers { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .timer {
     position: relative; padding: 9px 10px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel-2); overflow: hidden;
@@ -261,7 +256,6 @@ select { width: auto; padding-right: 6px; }
 .timer .where { font-size: 10px; color: var(--muted); }
 .live { color: var(--c); animation: blink 1.4s infinite; }
 
-/* ---- devices ---- */
 .device-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 5px; }
 .device { padding: 9px; border-radius: var(--radius); background: var(--panel-2); border: 1px solid var(--line); transition: .2s; }
 .device.monitor { grid-column: span 2; }
@@ -290,7 +284,6 @@ select { width: auto; padding-right: 6px; }
 .yield-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
 .item .qty { width: 70px; height: 26px; }
 
-/* ---- chat ---- */
 .chat-section.active { display: flex !important; flex-direction: column; height: 100%; }
 .chat-log { flex: 1; min-height: 200px; overflow-y: auto; padding: 6px; border-radius: var(--radius); background: var(--bg-2); border: 1px solid var(--line); }
 .msg { padding: 5px 8px; margin-bottom: 3px; border-radius: 4px; animation: fade-up .2s; }
@@ -300,13 +293,11 @@ select { width: auto; padding-right: 6px; }
 .chat-form { display: flex; gap: 6px; margin: 8px 0; }
 #bot-commands { line-height: 2; }
 
-/* ---- tools ---- */
 .decay.low .bar i { background: var(--accent); }
 .decay.low b { color: var(--accent); }
 .craft-head { display: flex; gap: 10px; align-items: center; margin: 10px 0 4px; }
 .craft-head .title { font: 700 16px var(--display); }
 
-/* ---- breeder ---- */
 .legend { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; color: var(--muted); font-size: 11px; }
 .gene, .clone i {
     display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 3px; border-radius: 4px;
@@ -322,7 +313,6 @@ select { width: auto; padding-right: 6px; }
 .breed-card .sub { margin: 7px 0; color: var(--muted); line-height: 2; }
 .clone { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; color: var(--text); }
 
-/* ---- power ---- */
 .load-row { display: flex; gap: 4px; margin-bottom: 4px; }
 .load-row input.num { width: 56px; }
 .gen-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; align-items: end; }
@@ -330,7 +320,6 @@ select { width: auto; padding-right: 6px; }
 .verdict.ok { background: rgba(127, 208, 74, .12); color: var(--good); border: 1px solid rgba(127, 208, 74, .4); }
 .verdict.bad { background: rgba(224, 68, 47, .12); color: var(--accent); border: 1px solid rgba(224, 68, 47, .4); }
 
-/* ---- server browser ---- */
 .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 6px 0; }
 .filters input.num { width: 100%; }
 .detail-body .stat-row { grid-template-columns: repeat(4, 1fr); }
@@ -362,7 +351,6 @@ select { width: auto; padding-right: 6px; }
 .desc summary { cursor: pointer; color: var(--muted); font-size: 11px; }
 .desc pre { white-space: pre-wrap; font: 11px/1.5 var(--font); color: var(--text); max-height: 200px; overflow: auto; margin: 6px 0 0; }
 .preview-banner {
-    /* Bottom-centre so it never covers the Resource filters box (top-left) or the zoom buttons (bottom-right). */
     position: absolute; bottom: 14px; left: 364px; right: 64px; width: fit-content; margin: 0 auto; transform: translateY(20px);
     z-index: 700; display: flex; gap: 12px; align-items: center;
     padding: 8px 10px 8px 14px; border-radius: var(--radius); background: rgba(16, 16, 18, .92); border: 1px solid rgba(240, 178, 60, .5);
@@ -372,7 +360,6 @@ select { width: auto; padding-right: 6px; }
 @media (max-width: 900px) { .preview-banner { left: 12px; right: 12px; } }
 .preview-banner b { color: var(--warn); font: 700 12px var(--display); letter-spacing: .1em; text-transform: uppercase; margin-right: 4px; }
 
-/* ---- heatmap control ---- */
 .heat-control {
     position: absolute; top: 12px; left: 12px; z-index: 650; width: 230px; border-radius: var(--radius);
     background: rgba(16, 16, 18, .92); border: 1px solid var(--line-2); backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
@@ -434,7 +421,6 @@ select { width: auto; padding-right: 6px; }
     box-shadow: 0 0 6px var(--c);
 }
 
-/* ---- tracked players ---- */
 .group-card { padding: 10px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); display: grid; gap: 8px; }
 .group-card .item { background: var(--panel); }
 .tracked.here { border-color: rgba(127, 208, 74, .5); }
@@ -444,7 +430,6 @@ select { width: auto; padding-right: 6px; }
 .state-dot.online { background: #6d8bb3; }
 .warn { color: var(--warn); }
 
-/* ---- settings ---- */
 .active-server { border-color: rgba(127, 208, 74, .4); }
 .matrix { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-top: 8px; }
 .matrix-head, .matrix-row { display: grid; grid-template-columns: 1fr 60px 60px; align-items: center; padding: 5px 10px; }
@@ -453,7 +438,6 @@ select { width: auto; padding-right: 6px; }
 .matrix-row { border-top: 1px solid var(--line); cursor: pointer; }
 .matrix-row input { accent-color: var(--accent); }
 
-/* ================= map ================= */
 #map { flex: 1; position: relative; background: #13303f; }
 .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); z-index: 500; background: radial-gradient(circle at 50% 40%, #17171a, var(--bg)); text-align: center; }
 .empty .big-mark { width: 44px; height: 44px; margin: 0 auto 14px; }
@@ -514,7 +498,6 @@ select { width: auto; padding-right: 6px; }
 .vend-pop td.stock.out { color: var(--accent); font-size: 10px; }
 .vend-pop .stats { margin-top: 8px; padding: 6px 8px; border-radius: 4px; background: rgba(224, 68, 47, .12); border: 1px solid rgba(224, 68, 47, .3); }
 
-/* ================= toasts ================= */
 #toasts { position: fixed; right: 14px; top: 58px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; width: 310px; pointer-events: none; }
 .toast {
     pointer-events: auto; cursor: pointer; padding: 10px 12px 10px 14px; border-radius: var(--radius);
@@ -539,7 +522,6 @@ select { width: auto; padding-right: 6px; }
     #daynight { font-size: 11px; }
 }
 
-/* ---- user pins + decay timers ---- */
 .user-pin { position: absolute; transform: translate(-50%, -100%); display: flex; align-items: center; gap: 4px; padding: 2px 6px 2px 3px; border-radius: 12px;
     background: rgba(12, 12, 14, .88); border: 2px solid var(--c); color: var(--text); font-size: 11px; font-weight: 600; white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, .6); cursor: grab; }
 .user-pin::after { content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--c); }
@@ -565,7 +547,6 @@ select { width: auto; padding-right: 6px; }
 #map.picking, #map.picking .leaflet-interactive { cursor: crosshair !important; }
 .drop-hover { outline: 2px dashed var(--accent); outline-offset: 2px; }
 .parts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-bottom: 6px; }
-/* Long names (servers, items) must ellipsize inside lists instead of widening them on phones. */
 .list > .item, .item { min-width: 0; }
 .row.wrap { flex-wrap: wrap; }
 .track-pick { width: auto; max-width: 140px; height: 26px; padding: 0 6px; font-size: 11px; }

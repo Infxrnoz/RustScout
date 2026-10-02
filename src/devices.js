@@ -2,7 +2,6 @@ const { Persisted } = require('./persist');
 
 const TYPES = { 1: 'switch', 2: 'alarm', 3: 'monitor' };
 
-// Smart switches, smart alarms and storage monitors paired to the active server.
 class Devices {
     constructor(file) {
         this.store = new Persisted(file, { list: {} });
@@ -31,7 +30,6 @@ class Devices {
         return this.list[id];
     }
 
-    // Applies an entity payload; returns true when a smart alarm just went off.
     apply(entityId, payload, now = Date.now()) {
         const d = this.list[String(entityId)];
         if (!d) return false;

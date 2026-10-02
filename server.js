@@ -21,10 +21,8 @@ const { Tracking } = require('./src/tracking');
 
 const ROOT = __dirname;
 const STATIC = path.join(ROOT, 'data');
-// Paired servers and tracked history; DATA_DIR keeps a test copy's state apart from the real one.
 const DATA = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : STATIC;
 const CONFIG_FILE = process.env.CONFIG_FILE ? path.resolve(process.env.CONFIG_FILE) : path.join(ROOT, 'config.json');
-// The desktop app keeps the Rust+ login with the rest of its data (the install folder is read-only).
 const CREDS_FILE = process.env.RUSTPLUS_CONFIG ? path.resolve(process.env.RUSTPLUS_CONFIG) : path.join(ROOT, 'rustplus.config.json');
 const SERVERS_FILE = path.join(DATA, 'servers.json');
 
@@ -42,20 +40,16 @@ const DEFAULT_ALERTS = Object.fromEntries(Object.keys(ALERT_KINDS).map(k => [k, 
 
 const DEFAULT_CONFIG = {
     port: 3000,
-    // Either a rustplusplus credentials file, or a rustplus.config.json from `npx @liamcottle/rustplus.js fcm-register`.
     credentialsFile: '',
-    // Which steamId to use when credentialsFile is a rustplusplus file holding several users (defaults to its hoster).
     steamId: '',
     poll: { markers: 4000, team: 5000, time: 15000, info: 30000, devices: 60000 },
     steamApiKey: '',
     rustMapsKey: '',
     discordWebhook: '',
     bot: { enabled: true, prefix: '!' },
-    // Two-way Discord bot (optional): answers commands in one channel. allowSay lets that channel post into team chat.
     discordBot: { enabled: false, token: '', channelId: '', prefix: '!', allowSay: false },
     sulfurSaleAlertMin: 1000,
     upkeepAlertHours: 3,
-    // Decay timers warn this many minutes before the structure falls.
     decayAlertMinutes: 30,
     alerts: DEFAULT_ALERTS
 };
@@ -64,10 +58,9 @@ const readJson = (file, fallback, { keepBad = false } = {}) => {
     try {
         return JSON.parse(fs.readFileSync(file, 'utf8'));
     } catch (e) {
-        // A damaged config/servers file would be overwritten with defaults on the next save; set it aside first.
         if (keepBad && e.code !== 'ENOENT') {
             const bad = `${file}.bad-${Date.now()}`;
-            try { fs.renameSync(file, bad); } catch { /* best effort */ }
+            try { fs.renameSync(file, bad); } catch {  }
             console.error(`${path.basename(file)} could not be read (${e.message}); saved it as ${path.basename(bad)} and started from defaults`);
         }
         return fallback;
@@ -75,7 +68,6 @@ const readJson = (file, fallback, { keepBad = false } = {}) => {
 };
 const writeJson = (file, data) => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    // Write then rename: a crash mid-write must never truncate servers.json or config.json.
     fs.writeFileSync(`${file}.tmp`, JSON.stringify(data, null, 2));
     fs.renameSync(`${file}.tmp`, file);
 };
@@ -90,7 +82,6 @@ const config = {
     alerts: Object.fromEntries(Object.keys(ALERT_KINDS).map(k => [k, { ...DEFAULT_ALERTS[k], ...loaded.alerts?.[k] }]))
 };
 const saveConfig = () => writeJson(CONFIG_FILE, { ...config, port: loaded.port ?? config.port });
-// PORT / NO_FCM let a second copy run side by side (e.g. for testing) without fighting over the push connection.
 if (process.env.PORT) config.port = Number(process.env.PORT);
 
 const store = readJson(SERVERS_FILE, { active: null, list: {} }, { keepBad: true });
@@ -100,17 +91,12 @@ const threats = new Persisted(path.join(DATA, 'threats.json'), { deaths: [] });
 const log = (...args) => console.log(new Date().toISOString().slice(11, 19), ...args);
 const serverDir = id => path.join(DATA, 'servers', id.replace(/[^\w.-]/g, '_'));
 
-// Decoded protobuf messages keep default values (0, false, []) on the prototype, so a plain JSON
-// dump would drop them — e.g. a sold-out order's amountInStock of 0. toObject keeps them and stringifies uint64s.
 const plain = value => value.constructor.toObject(value, { defaults: true, arrays: true, longs: String, enums: Number });
 const errText = e => e?.message || (typeof e === 'object' ? JSON.stringify(e) : String(e));
-
-/* ---------------- browser clients ---------------- */
 
 const app = express();
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-// The http server's own error handler reports a busy port; ws re-emits the same error and would crash without a listener.
 wss.on('error', () => {});
 
 const broadcast = msg => {
@@ -118,9 +104,6 @@ const broadcast = msg => {
     for (const ws of wss.clients) if (ws.readyState === 1) ws.send(text);
 };
 
-/* ---------------- alerts ---------------- */
-
-// Set up further down, once tracking and the session exist.
 let discordBot = null;
 
 const ALERT_COLORS = { teamDeath: 0xd8412f, killedBy: 0xd8412f, alarm: 0xff3b30, teamOnline: 0x7cc043, teamOffline: 0x8d8a85, sulfurSale: 0xf07a2c, upkeep: 0xe4a73a };
@@ -130,7 +113,6 @@ function alert(kind, text, extra = {}) {
     if (!rule) return;
     const entry = { kind, label: ALERT_KINDS[kind], text, t: Date.now(), server: session?.server.name, ...extra };
     broadcast({ type: 'alert', alert: entry, toast: rule.toast });
-    // No webhook but the bot is running: post the alert through the bot instead.
     if (rule.discord && !config.discordWebhook && discordBot?.user) {
         discordBot.post({ title: ALERT_KINDS[kind], description: text, color: ALERT_COLORS[kind] ?? 0x3fa9f5, footer: entry.server ? { text: entry.server } : undefined })
             .catch(e => log('discord bot alert failed:', e.message));
@@ -148,13 +130,10 @@ function alert(kind, text, extra = {}) {
     }
 }
 
-/* ---------------- FCM listener: pairing, deaths, alarms ---------------- */
-
 const NOT_LINKED = process.env.DESKTOP ? 'not set up — link your Steam account' : 'not set up — run setup.bat (or npm run register) to link Steam';
 const fcm = { status: NOT_LINKED, client: null };
 
 function loadGcmCredentials() {
-    // `npx rustplus fcm-register` run in this folder writes rustplus.config.json; a fresh one beats an old configured file.
     const local = CREDS_FILE;
     const file = fs.existsSync(local) ? local : config.credentialsFile ? path.resolve(ROOT, config.credentialsFile) : null;
     if (!file) return null;
@@ -180,7 +159,7 @@ function onPush(data) {
     const title = get('title') || '';
     const message = get('message') || '';
     let body = {};
-    try { body = JSON.parse(get('body') || '{}'); } catch { /* some pushes have no json body */ }
+    try { body = JSON.parse(get('body') || '{}'); } catch {  }
     const serverId = body.ip && body.port ? `${body.ip}:${body.port}` : null;
 
     if (channel === 'pairing' && body.type === 'server') {
@@ -192,7 +171,6 @@ function onPush(data) {
         log(`paired server ${body.name} (${serverId})`);
         saveStore();
         broadcast({ type: 'servers', servers: publicServers() });
-        // You just pressed Pair in game, so that's the server you want to see.
         activate(serverId);
         return;
     }
@@ -221,14 +199,12 @@ function onPush(data) {
         return;
     }
 
-    // Alarms on the connected server arrive through Rust+ entity broadcasts instead (with the entity id).
     if (channel === 'alarm' && serverId !== session?.server.id) {
         alert('alarm', `${title}${message ? ` — ${message}` : ''}${body.name ? ` (${body.name})` : ''}`);
     }
 }
 
 async function startFcm() {
-    // Restartable: the desktop app calls this again right after Steam is linked.
     if (fcm.client) {
         fcm.client.destroy();
         fcm.client = null;
@@ -248,9 +224,7 @@ async function startFcm() {
     }
     if (!gcm) return;
 
-    // Pass the ids of pushes we already handled so they aren't redelivered on every start.
     const seen = new Persisted(path.join(DATA, 'fcm-seen.json'), { ids: [] });
-    // A copy: the client pushes each new id into the array it was given before emitting the message.
     fcm.client = new PushReceiverClient(gcm.androidId, gcm.securityToken, [...seen.data.ids]);
     fcm.client.on('ON_DATA_RECEIVED', data => {
         if (data.persistentId) {
@@ -276,8 +250,6 @@ const publicServers = () => ({
     list: Object.values(store.list).map(({ playerToken, ...s }) => s)
 });
 
-/* ---------------- Rust+ session ---------------- */
-
 class Session {
     constructor(server) {
         this.server = server;
@@ -293,7 +265,6 @@ class Session {
         this.pop = new PopTracker(path.join(dir, 'pop.json'));
         this.devices = new Devices(path.join(dir, 'devices.json'));
         this.pins = new Pins(path.join(dir, 'pins.json'));
-        // Separate from the poll timers: walls keep decaying while Rust+ is disconnected, so this survives reconnects.
         this.decayTimer = setInterval(() => this.checkDecay(), 30000);
         this.upkeepWarned = new Set();
         this.connect();
@@ -312,18 +283,15 @@ class Session {
         this.rp.on('message', msg => {
             try { this.onBroadcast(msg); } catch (e) { log('broadcast handling failed:', e.message); }
         });
-        // Once a server has gone quiet, keep saying so through the retries instead of flipping back to "connecting".
         if (this.state.status !== 'not answering') this.setStatus('connecting');
         this.handshaking = true;
         this.rp.connect();
-        // Some servers accept the connection but never finish the Rust+ handshake (overloaded, or firewalled so only
-        // Facepunch's own relay gets through). Without a limit that sits on "connecting" forever.
         clearTimeout(this.connectTimer);
         this.connectTimer = setTimeout(() => {
             if (this.closed || !this.handshaking) return;
             log(`${s.name}: Rust+ didn't answer within 30s`);
             this.setStatus('not answering');
-            try { this.rp.disconnect(); } catch { /* already gone */ }
+            try { this.rp.disconnect(); } catch {  }
             this.onDisconnected();
         }, 30000);
     }
@@ -343,7 +311,6 @@ class Session {
         this.setStatus('loading map');
         await this.refreshInfo();
         await this.refreshMap();
-        // The session can be closed (server switched or re-paired) while it was still starting up.
         if (this.closed) return;
         this.setStatus('online');
         await Promise.allSettled([this.refreshMarkers(), this.refreshTeam(), this.refreshTime(), this.loadChat(), this.refreshDevices()]);
@@ -352,7 +319,6 @@ class Session {
         this.every(config.poll.team, () => this.refreshTeam());
         this.every(config.poll.time, () => this.refreshTime());
         this.every(config.poll.info, () => this.refreshInfo());
-        // Entity info also re-subscribes us to entityChanged broadcasts after a server restart.
         this.every(config.poll.devices, () => this.refreshDevices());
     }
 
@@ -368,8 +334,6 @@ class Session {
         this.timers = [];
     }
 
-    // Startup failed (often a server still loading after a restart and not answering yet). Don't sit there:
-    // drop the connection so the normal reconnect loop tries again.
     fail(e) {
         log(`session error (${this.server.name}):`, errText(e));
         this.setStatus(`error: ${errText(e)} — retrying`);
@@ -378,7 +342,7 @@ class Session {
         clearTimeout(this.retryTimer);
         this.retryTimer = setTimeout(() => {
             if (this.closed) return;
-            if (this.rp.websocket) this.rp.disconnect(); // fires 'disconnected' → reconnect in 15s
+            if (this.rp.websocket) this.rp.disconnect(); 
             else this.connect();
         }, 5000);
     }
@@ -411,7 +375,6 @@ class Session {
         this.state.info = plain(info);
         this.tracker.setWipe(Number(this.state.info.wipeTime));
         this.pop.add(this.state.info, Date.now());
-        // Imported/manual servers only know their ip:port until the server tells us its name.
         if (this.server.name === this.server.id && info.name) {
             this.server.name = info.name;
             saveStore();
@@ -436,16 +399,12 @@ class Session {
         broadcast({ type: 'map', mapMeta: this.state.mapMeta });
     }
 
-    // Rust+'s info.seed doesn't always match the world seed; the server's public query reply (world.seed) does,
-    // and that's the one RustMaps knows the map by.
     async lookupWorldSeed() {
         try {
             const found = await browser.resolve(this.server.ip);
             const candidates = (await Promise.all(found.map(s => browser.details(s.ip, s.queryPort).catch(() => null))))
                 .filter(d => d?.seed && d.size === this.state.info.mapSize);
-            // One IP can host several servers: prefer the one whose name matches Rust+.
             let d = candidates.find(c => c.name === this.state.info.name) || (candidates.length === 1 ? candidates[0] : null);
-            // Big hosts put Rust+ on a different IP than the game server; find it by exact name in Steam's list.
             if (!d && config.steamApiKey) {
                 const cache = await browser.list(config.steamApiKey);
                 const hit = cache.servers.find(s => s.name === this.state.info.name);
@@ -458,7 +417,7 @@ class Session {
                 this.state.mapMeta.rustMapsId = d.rustMapsId;
                 this.state.mapMeta.levelUrl = d.levelUrl;
             }
-        } catch { /* keep the Rust+ seed */ }
+        } catch {  }
     }
 
     async refreshMarkers() {
@@ -501,7 +460,6 @@ class Session {
         broadcast({ type: 'time', time: this.state.time });
     }
 
-    // Day and night run at different speeds, so measure the live rate instead of trusting dayLengthMinutes.
     secondsPerGameHour(time) {
         const [a, b] = [this.timeSamples[0], this.timeSamples[this.timeSamples.length - 1]];
         let dh = b ? b.time - a.time : 0;
@@ -520,8 +478,6 @@ class Session {
         const h = Math.floor(now), m = Math.floor((now - h) * 60);
         return { clock: `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`, isDay, untilChange: dh * t.secondsPerHour };
     }
-
-    /* ---- team chat + bot ---- */
 
     async loadChat() {
         const { teamChat } = await this.request({ getTeamChat: {} });
@@ -549,7 +505,6 @@ class Session {
     }
 
     async say(text) {
-        // Team chat truncates long messages, so split on word boundaries.
         const parts = [];
         let line = '';
         for (const word of String(text).split(' ')) {
@@ -562,8 +517,6 @@ class Session {
         if (line.trim()) parts.push(line.trim());
         for (const p of parts) await this.request({ sendTeamMessage: { message: p } });
     }
-
-    /* ---- smart devices ---- */
 
     async refreshDevice(id) {
         try {
@@ -638,7 +591,7 @@ class Session {
         clearInterval(this.decayTimer);
         this.tracker.close();
         for (const p of [this.teamTracker.store, this.events.store, this.pop.store, this.devices.store, this.pins.store]) p.flush();
-        try { this.rp.disconnect(); } catch { /* already gone */ }
+        try { this.rp.disconnect(); } catch {  }
     }
 }
 
@@ -646,7 +599,6 @@ let session = null;
 
 function activate(id) {
     if (!store.list[id]) return false;
-    // Re-pairing the server we're already connected to (same token) needs no reconnect.
     if (session && session.server.id === id && session.server.playerToken === store.list[id].playerToken && !session.closed) {
         session.server = store.list[id];
         broadcast({ type: 'servers', servers: publicServers() });
@@ -660,8 +612,6 @@ function activate(id) {
     broadcast({ type: 'servers', servers: publicServers() });
     return true;
 }
-
-/* ---------------- HTTP API ---------------- */
 
 app.use(express.json());
 app.use(express.static(path.join(ROOT, 'public')));
@@ -777,11 +727,8 @@ app.get('/api/threats', guard(async (req, res) => {
     res.json({ killers: list, recent: threats.data.deaths.slice(-50).reverse(), apiKey: !!config.steamApiKey });
 }));
 
-/* ---------------- server browser + watch list ---------------- */
-
 const watch = new Persisted(path.join(DATA, 'watch.json'), { list: {}, pop: {} });
 
-// A paired server shares the IP of its browser entry (ports differ: app port vs game/query port).
 const pairedFor = ip => Object.values(store.list).find(s => s.ip === ip)?.id ?? null;
 
 async function pollWatched() {
@@ -790,7 +737,7 @@ async function pollWatched() {
             const d = await browser.details(w.ip, w.queryPort);
             const samples = watch.data.pop[w.id] ??= [];
             samples.push([Date.now(), d.players, d.queued, d.maxPlayers]);
-            while (samples.length > 7 * 24 * 20) samples.shift(); // ~7 days at 3-minute polls
+            while (samples.length > 7 * 24 * 20) samples.shift(); 
             if (w.wipe && d.wipe && d.wipe !== w.wipe) alert('watchWipe', `${d.name} just wiped (${d.players}/${d.maxPlayers} on)`);
             Object.assign(w, { name: d.name, wipe: d.wipe, players: d.players, maxPlayers: d.maxPlayers, queued: d.queued, online: true, checked: Date.now() });
         } catch {
@@ -861,12 +808,9 @@ app.get('/api/rustmaps', guard(async (req, res) => {
     }
 }));
 
-// Biome + topology grid from the server's own .map file, for spawn-zone filters.
-// A server's published map URL, or a map file opened from disk ("mapfile:<hash>").
 const mapSource = url => /^https:\/\/[^\s?#]+\.map(\?[^\s#]*)?$/i.test(url) || terrain.FILE_KEY.test(url);
 const MAPFILES = () => path.join(DATA, 'terrain');
 
-// Open a .map file from disk: the page posts the raw bytes; the file name comes in a header.
 app.post('/api/mapfile', express.raw({ type: '*/*', limit: '400mb' }), guard(async (req, res) => {
     const name = decodeURIComponent(String(req.get('x-file-name') || 'map'));
     res.json(await terrain.loadFile(req.body, MAPFILES(), gameTables(), name));
@@ -890,7 +834,6 @@ app.get('/api/terrain', guard(async (req, res) => {
     res.type('application/octet-stream').send(grid);
 }));
 
-// Exact facility positions (recyclers, research tables, refineries, turrets, SAMs, card readers…) for a map file.
 app.get('/api/facilities', guard(async (req, res) => {
     const url = String(req.query.url || '');
     if (!mapSource(url)) return res.status(400).json({ error: 'not a map file URL' });
@@ -898,14 +841,11 @@ app.get('/api/facilities', guard(async (req, res) => {
     res.json(facilities);
 }));
 
-/* ---- tracked groups ---- */
 const tracking = new Tracking(path.join(DATA, 'tracked.json'), {
     alert: (kind, text) => alert(kind, text),
     getServer: () => session?.queryAddr || null,
     getKey: () => config.steamApiKey
 });
-
-/* ---------------- Discord bot ---------------- */
 
 const DISCORD_EXTRA = { status: 'server + connection', timers: 'your decay timers', tracked: 'tracked players', say: 'post to team chat (if allowed)' };
 async function discordCommand(cmd, args, msg) {
@@ -977,7 +917,6 @@ function gameTables() {
     };
 }
 
-// RustMaps' CDN sends no CORS headers, so heat tiles are relayed (and cached) here for the canvas heatmap.
 app.get('/api/rmtile', guard(async (req, res) => {
     const url = String(req.query.u || '');
     if (!/^https:\/\/content\.rustmaps\.com\/maps\/\d+\/[0-9a-f]{32}\/[a-z0-9]+\/tiles\/-?\d+\/-?\d+\/-?\d+\.png$/i.test(url)) {
@@ -1006,11 +945,9 @@ app.get('/api/settings', (req, res) => res.json({
 
 app.put('/api/settings', (req, res) => {
     const b = req.body || {};
-    // Validate everything before changing anything, so a rejected save leaves the config untouched.
     if (b.discordBot?.channelId && !/^\d{15,25}$/.test(String(b.discordBot.channelId).trim())) {
         return res.status(400).json({ error: 'Channel ID should be a long number (right-click the channel → Copy Channel ID)' });
     }
-    // '(set)' is the masked value we handed out; only overwrite secrets when a real value comes back.
     if (typeof b.discordWebhook === 'string' && b.discordWebhook !== '(set)') {
         if (b.discordWebhook && !/^https:\/\/(\w+\.)?discord(app)?\.com\/api\/webhooks\//.test(b.discordWebhook)) {
             return res.status(400).json({ error: 'That is not a Discord webhook URL' });
@@ -1030,11 +967,9 @@ app.put('/api/settings', (req, res) => {
             prefix: String(d.prefix || '!').slice(0, 3),
             allowSay: !!d.allowSay
         };
-        // Only log the bot in again when something about it changed.
         if (JSON.stringify(config.discordBot) !== before || (config.discordBot.enabled && !discordBot)) startDiscordBot();
     }
     if (b.alerts) for (const k of Object.keys(ALERT_KINDS)) if (b.alerts[k]) config.alerts[k] = { toast: !!b.alerts[k].toast, discord: !!b.alerts[k].discord };
-    // Blank fields mean "leave it", not 0 (+'' is 0).
     const num = v => v !== '' && v !== null && v !== undefined && Number.isFinite(+v) && +v >= 0 ? +v : null;
     if (num(b.sulfurSaleAlertMin) !== null) config.sulfurSaleAlertMin = num(b.sulfurSaleAlertMin);
     if (num(b.upkeepAlertHours) !== null) config.upkeepAlertHours = num(b.upkeepAlertHours);
@@ -1066,7 +1001,6 @@ let markListening;
 const listening = new Promise(resolve => { markListening = resolve; });
 httpServer.listen(config.port, '127.0.0.1', () => {
     log(`RustScout running at http://localhost:${config.port}`);
-    // stop.bat uses this to stop a background copy (and only this copy). The desktop app has its own lifecycle.
     if (!process.env.DESKTOP) fs.writeFileSync(PID_FILE, String(process.pid));
     markListening(config.port);
     startFcm();
@@ -1074,13 +1008,11 @@ httpServer.listen(config.port, '127.0.0.1', () => {
     if (store.active && store.list[store.active]) activate(store.active);
 });
 
-// Running 24/7: a stray failed promise should be logged, not take the whole app down.
 process.on('unhandledRejection', e => log('unhandled error:', e?.message || e));
 
 const PID_FILE = path.join(DATA, 'app.pid');
-process.on('exit', () => { try { if (fs.readFileSync(PID_FILE, 'utf8') === String(process.pid)) fs.unlinkSync(PID_FILE); } catch { /* none */ } });
+process.on('exit', () => { try { if (fs.readFileSync(PID_FILE, 'utf8') === String(process.pid)) fs.unlinkSync(PID_FILE); } catch {  } });
 
-// Save everything and disconnect (the desktop app calls this before it quits).
 const stop = () => {
     discordBot?.stop();
     fcm.client?.destroy();
@@ -1093,8 +1025,6 @@ const shutdown = () => {
     stop();
     process.exit(0);
 };
-// SIGHUP: the console window was closed (Windows); SIGBREAK: Ctrl+Break.
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) process.on(sig, shutdown);
 
-// Used by the desktop app (desktop/main.js), which runs this server inside Electron.
 module.exports = { listening, startFcm, stop, credsFile: CREDS_FILE, fcmStatus: () => fcm.status };

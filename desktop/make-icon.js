@@ -1,11 +1,9 @@
-// Draws the RustScout icon (red map pin on a dark rounded square) as a 512×512 PNG.
-// Run: node desktop/make-icon.js   → desktop/icon.png (electron-builder makes the .ico from it)
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
 const N = 512;
-const SS = 4; // supersampling per axis for smooth edges
+const SS = 4; 
 const px = Buffer.alloc(N * N * 4);
 
 const inRoundedSquare = (x, y) => {
@@ -13,13 +11,11 @@ const inRoundedSquare = (x, y) => {
     const cx = Math.min(Math.max(x, m + r), N - m - r), cy = Math.min(Math.max(y, m + r), N - m - r);
     return x >= m && x <= N - m && y >= m && y <= N - m && (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
 };
-// Point-in-triangle via barycentric signs.
 const tri = (ax, ay, bx, by, cx, cy) => (x, y) => {
     const s = (px1, py1, px2, py2) => (x - px2) * (py1 - py2) - (px1 - px2) * (y - py2);
     const d1 = s(ax, ay, bx, by), d2 = s(bx, by, cx, cy), d3 = s(cx, cy, ax, ay);
     return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
 };
-// Map pin: a circle plus the triangle from its two tangent points down to the tip, with a ring cut out.
 const C = [256, 206], R = 150, TIP = [256, 456];
 const d = TIP[1] - C[1], ca = R / d, sa = Math.sqrt(1 - ca * ca);
 const T1 = [C[0] - R * sa, C[1] + R * ca], T2 = [C[0] + R * sa, C[1] + R * ca];
@@ -45,7 +41,6 @@ for (let y = 0; y < N; y++) {
     }
 }
 
-// Minimal PNG writer (RGBA, no filtering).
 const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
 const crc = buf => { let c = 0xffffffff; for (const v of buf) c = crcTable[(c ^ v) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
 const chunk = (type, data) => {
@@ -60,6 +55,5 @@ const raw = Buffer.alloc(N * (N * 4 + 1));
 for (let y = 0; y < N; y++) px.copy(raw, y * (N * 4 + 1) + 1, y * N * 4, (y + 1) * N * 4);
 const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
 fs.writeFileSync(path.join(__dirname, 'icon.png'), png);
-// Same image as the page's favicon.
 fs.writeFileSync(path.join(__dirname, '..', 'public', 'icon.png'), png);
 console.log(`wrote desktop/icon.png (${Math.round(png.length / 1024)} KB)`);

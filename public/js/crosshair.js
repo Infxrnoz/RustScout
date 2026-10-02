@@ -1,7 +1,5 @@
 'use strict';
 
-// Draws a custom crosshair centred on (cx, cy). Shared by the Settings preview and the in-game overlay.
-// c: { style: 'cross'|'t'|'circle'|'dot', size, gap, thickness, color, opacity, outline, dot }
 const CROSSHAIR_DEFAULT = { on: false, style: 'cross', size: 8, gap: 4, thickness: 2, color: '#00ff66', opacity: 1, outline: true, dot: false };
 
 function drawCrosshair(ctx, cx, cy, c) {
@@ -23,7 +21,6 @@ function drawCrosshair(ctx, cx, cy, c) {
     ctx.globalAlpha = c.opacity;
     ctx.lineCap = 'butt';
     if (c.outline) {
-        // A thin black edge keeps it visible on snow and in bright daylight.
         ctx.strokeStyle = ctx.fillStyle = 'rgba(0,0,0,0.85)';
         ctx.lineWidth = c.thickness + 2;
         shapes.forEach(s => s(ctx));

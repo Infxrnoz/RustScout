@@ -1,7 +1,6 @@
 'use strict';
 
 (() => {
-    /* ---------- potential targets ---------- */
 
     async function loadTargets() {
         try { S.targets = await api(`/api/targets?hours=${$('#target-hours').value}`); } catch { S.targets = []; }
@@ -30,8 +29,6 @@
     bus.on('reset', loadTargets);
     bus.on('sales', loadTargets);
     setInterval(() => S.snapshot && loadTargets(), 30000);
-
-    /* ---------- raid calculator ---------- */
 
     const TOOL_ORDER = ['rocket', 'c4', 'satchel', 'explo', 'beancan', 'hv', 'f1'];
     const DEFAULT_TOOLS = ['rocket', 'c4', 'satchel', 'explo', 'beancan'];

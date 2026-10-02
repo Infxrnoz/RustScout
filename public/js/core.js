@@ -1,7 +1,5 @@
 'use strict';
 
-/* ================= shared state + helpers ================= */
-
 const GRID = 146.25;
 const MARKER = { player: 1, explosion: 2, vending: 3, ch47: 4, cargo: 5, crate: 6, radius: 7, heli: 8, travellingVendor: 9 };
 const EVENT_META = {
@@ -50,7 +48,7 @@ const ago = t => {
 };
 const store = {
     get(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
-    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked */ } }
+    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {  } }
 };
 const api = async (url, opts = {}) => {
     const res = await fetch(url, {
@@ -62,9 +60,6 @@ const api = async (url, opts = {}) => {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
 };
-// Breaks a set of wanted items ({id: qty}) down to raw materials. Recipes can make several per craft
-// (gunpowder 10, pistol ammo 4), so demand for each intermediate is totalled before rounding up to whole
-// crafts: items are expanded deepest-recipe-first, so everything that needs gunpowder is counted before it.
 function craftRaw(want) {
     const recipes = S.game.craft;
     const depthMemo = {};
@@ -88,15 +83,11 @@ function craftRaw(want) {
     }
     return { raw: need, crafts };
 }
-// How many crafts it takes to end up with qty of an item.
 const craftsFor = (id, qty) => Math.ceil(qty / (S.game.craft[id]?.n || 1));
 const empty = text => `<div class="empty-note">${text}</div>`;
-// Facepunch stopped sending vending machines and map events over Rust+ on 6 Aug 2026 (commits.facepunch.com/612220).
 const NO_MARKER_DATA = 'Facepunch removed shops and map events (heli, cargo, crates…) from Rust+ on 6 Aug 2026, '
     + 'so no companion app can see them right now. This fills in again automatically if they bring the data back.';
 const markerDataMissing = () => S.snapshot?.status === 'online' && !S.markers.some(m => m.type !== MARKER.player);
-
-/* ================= grid ================= */
 
 const correctedSize = size => {
     const r = size % GRID;
@@ -134,21 +125,17 @@ const MONUMENT_NAMES = {
     apartmentcomplex: 'Apartment Complex'
 };
 function monumentName(token) {
-    // Some servers also send raw prefab paths (underwater lab modules etc.) — those aren't landmarks.
     if (/^(train_tunnel|DungeonBase)/.test(token) || token.includes('/')) return null;
     if (MONUMENT_NAMES[token]) return MONUMENT_NAMES[token];
     return token.replace(/_display_name|_monument(_name)?$/g, '').replace(/_/g, ' ')
         .replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-/* ================= map ================= */
-
 const map = L.map('map', {
     crs: L.CRS.Simple, minZoom: -3, maxZoom: 3, zoomSnap: 0.25, zoomDelta: 0.5,
     attributionControl: false, zoomControl: false
 });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
-// Map units are world metres centred on the map middle (same as RustMaps), so zoom 0 = 1 px per metre.
 map.setMinZoom(-5);
 map.setMaxZoom(2);
 map.setView([0, 0], -2);
@@ -180,7 +167,6 @@ const fromLatLng = ll => {
 };
 const flyTo = (x, y, zoom = 0.75) => {
     if (!S.mapMeta || !Number.isFinite(x) || !Number.isFinite(y)) return;
-    // flyTo animates through NaN when the map has no size (hidden tab, collapsed layout); jump instead.
     const size = map.getSize();
     if (!size.x || !size.y || document.hidden) map.setView(toLatLng(x, y), zoom, { animate: false });
     else map.flyTo(toLatLng(x, y), zoom, { duration: 0.6 });
@@ -195,13 +181,11 @@ function loadMap(meta) {
     heat.reset();
     if (!meta) { bus.emit('mapLoaded'); return; }
 
-    // The Rust+ / Facepunch render has an ocean margin (in image pixels) around the playable square.
     const { width: w, height: h, oceanMargin: m, mapSize: s } = meta;
     const mx = m * s / (w - 2 * m), my = m * s / (h - 2 * m);
     const bounds = [[-s / 2 - my, -s / 2 - mx], [s / 2 + my, s / 2 + mx]];
     mapImage = L.imageOverlay(meta.imageUrl || `/api/map.jpg?v=${meta.version}`, bounds, { className: 'map-img', pane: 'base' }).addTo(map);
     map.setMaxBounds(L.latLngBounds(bounds).pad(0.25));
-    // Panels opening/closing can leave Leaflet with a stale container size, so fit again once layout settles.
     map.fitBounds(bounds, { animate: false });
     setTimeout(() => {
         map.invalidateSize();
@@ -210,7 +194,6 @@ function loadMap(meta) {
 
     drawGrid();
     for (const m of meta.monuments || []) {
-        // Live servers give Rust+ tokens; an opened .map file gives names (and lists every cave and well, so skip those).
         const name = m.name ? (/^(Cave|Water Well)$/.test(m.name) ? null : m.name) : monumentName(m.token);
         if (!name) continue;
         L.marker(toLatLng(m.x, m.y), {
@@ -226,15 +209,12 @@ function loadMap(meta) {
     heat.load(meta);
 }
 
-/* ---- RustMaps heatmaps (nodes, hemp, berries, animals, player spawns) ---- */
-
 const HEAT_LABEL = {
     Nodes: 'All ore nodes', Hemp: 'Hemp', Berries: 'Berries', PlayerSpawns: 'Player spawns', Bears: 'Bears', Boars: 'Boars',
     Horses: 'Horses', Tigers: 'Tigers', Panthers: 'Panthers', Crocodiles: 'Crocodiles', Snakes: 'Snakes',
     Tier0: 'Terrain tier 0', Tier1: 'Terrain tier 1', Tier2: 'Terrain tier 2'
 };
 const HEAT_ORDER = Object.keys(HEAT_LABEL);
-// Item icons (rustlabs) standing in for each heat layer; null falls back to a text badge.
 const HEAT_ICON = {
     Nodes: 'stones', Hemp: 'clone.hemp', Berries: 'red.berry', Bears: 'bearmeat', Boars: 'meat.boar', Horses: 'horsemeat.raw',
     Tigers: 'hat.tigermask', Panthers: null, Crocodiles: 'crocodilemeat', Snakes: 'snakemeat', PlayerSpawns: null
@@ -243,8 +223,6 @@ const shortIcon = (shortname, cls = 'icon') => shortname
     ? `<img class="${cls}" src="https://rustlabs.com/img/items180/${shortname}.png" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
     : '';
 
-// Smooth density look: stitch RustMaps' tiles for the whole map (zoom -2 = 4 m per pixel), read the density
-// (alpha), blur it and recolour it teal → yellow → red. Tiles come through /api/rmtile because the CDN has no CORS.
 const densityCache = new Map();
 const DENSITY_RAMP = [
     [0.00, [20, 120, 140, 0]], [0.12, [40, 175, 190, 110]], [0.35, [70, 200, 190, 160]],
@@ -268,7 +246,7 @@ async function densityOverlay(baseUrl, size) {
     if (densityCache.has(key)) return densityCache.get(key);
 
     const z = -2;
-    const span = 256 / 2 ** z; // metres per tile
+    const span = 256 / 2 ** z; 
     const half = size / 2;
     const t0 = Math.floor(-half / span), t1 = Math.floor((half - 1) / span);
     const n = t1 - t0 + 1;
@@ -290,13 +268,11 @@ async function densityOverlay(baseUrl, size) {
     }
     await Promise.all(jobs);
 
-    // Tile (tx, ty) covers lng [tx*span, (tx+1)*span] and lat [-(ty+1)*span, -ty*span] in CRS.Simple.
     const result = finishDensity(raw, { m: span / 256, north: -t0 * span, west: t0 * span });
     densityCache.set(key, result);
     return result;
 }
 
-// Same look for a density grid computed in the app (e.g. per-ore spawn likelihood). values: row 0 = south.
 function gridDensity(key, values, res, size) {
     if (densityCache.has(key)) return densityCache.get(key);
     let max = 0;
@@ -317,10 +293,8 @@ function gridDensity(key, values, res, size) {
     return result;
 }
 
-// Blur, normalise, find hotspots and colour a raw density canvas (density in alpha). geo: metres/pixel + NW corner.
 function finishDensity(raw, geo) {
     const m = geo.m;
-    // Density lives in the alpha channel; blur it (~50 m) so points read as zones.
     const blurred = document.createElement('canvas');
     blurred.width = blurred.height = raw.width;
     const bg = blurred.getContext('2d');
@@ -329,16 +303,12 @@ function finishDensity(raw, geo) {
     const px = bg.getImageData(0, 0, blurred.width, blurred.height);
     const d = px.data;
 
-    // Normalise to the 99.5th percentile so a few hot pixels don't wash the rest out.
     const hist = new Uint32Array(256);
     let count = 0;
     for (let i = 3; i < d.length; i += 4) if (d[i]) { hist[d[i]]++; count++; }
     let acc = 0, top = 255;
     for (let v = 255; v > 0; v--) { acc += hist[v]; if (acc > count * 0.005) { top = v; break; } }
 
-    // Hotspots. RustMaps caps tile density (~140/255), so dense areas are flat plateaus and pixel peaks tie.
-    // Score each spot by a wide (~160 m) blur instead, which measures how much dense ground surrounds it,
-    // then pick the best spots greedily while keeping pins ~350 m apart.
     const W = blurred.width;
     const wide = document.createElement('canvas');
     wide.width = wide.height = W;
@@ -406,9 +376,8 @@ const heat = {
         const query = meta.rustMapsId ? `id=${meta.rustMapsId}` : `size=${meta.mapSize}&seed=${meta.seed}`;
         let r;
         try { r = await api(`/api/rustmaps?${query}`); } catch (e) { r = { state: 'error', error: e.message }; }
-        if (this.meta !== meta) return; // map changed while we waited
+        if (this.meta !== meta) return; 
         this.info = r.ready ? { state: 'ready', map: r.map } : r;
-        // A custom map found by seed only counts if RustMaps' procedural map for that seed is the same terrain.
         if (r.ready && meta.custom && !meta.rustMapsId) {
             const match = this.matchRatio(meta, r.map);
             if (match === null) this.info.warning = 'Custom map: can’t confirm RustMaps’ data matches until the server is paired.';
@@ -422,7 +391,6 @@ const heat = {
         if (want) this.show(want);
     },
 
-    // Share of Rust+ monuments that have a RustMaps monument within 80 m (null when Rust+ gave none).
     matchRatio(meta, rm) {
         const half = meta.mapSize / 2;
         const ours = (meta.monuments || []).filter(m => monumentName(m.token)).slice(0, 40);
@@ -437,7 +405,6 @@ const heat = {
         this.layer = null;
         store.set('heatmap', name);
         const meta = S.mapMeta;
-        // Per-ore likelihood computed from the map file + the game's spawn tables (always drawn smooth).
         if (name.startsWith('ore:') && meta) {
             const grid = resources.oreGrid(name.slice(4));
             if (grid) {
@@ -473,12 +440,10 @@ const heat = {
         this.render();
     },
 
-    // Unpaired previews have no Rust+ monument list; RustMaps' one fills in the names.
     drawMonuments() {
         this.rmMonuments.clearLayers();
         if (!S.mapMeta || S.mapMeta.monuments.length) return;
         const half = S.mapMeta.mapSize / 2;
-        // The API only gives type + position, so skip terrain features and tiny props by name.
         const minor = /rock|powerline|substation|iceberg|ice lake|lake|oasis|tunnel entrance|cave|water well|ruin|sphere tank|warehouse/i;
         for (const m of this.info.map.monuments) {
             if (minor.test(m.type) || !Number.isFinite(m.x)) continue;
@@ -515,7 +480,6 @@ const heat = {
             return list.length ? `<div class="res-group">${title}</div><div class="heat-tiles">${list.map(btn).join('')}</div>` : '';
         };
         box.classList.toggle('active', !!current || resources.active?.());
-        // Ore-by-type layers come from the server's map file + the game's spawn tables, independent of RustMaps.
         const ORE_TILES = [['stone', 'Stone', 'stones'], ['metal', 'Metal', 'metal.ore'], ['sulfur', 'Sulfur', 'sulfur.ore'], ['hqm', 'HQM', 'hq.metal.ore'],
             ['junkpile', 'Junkpiles', 'scrap'], ['divesite', 'Dive sites', 'diving.mask']].filter(([k]) => resources.oreGrid?.(k)?.values);
         const oreBlock = resources.oreGrid?.('stone') ? `
@@ -569,14 +533,11 @@ function drawGrid() {
     }
 }
 
-// Cursor readout: grid + world coords.
 map.on('mousemove', e => {
     if (!S.mapMeta) return;
     const { x, y } = fromLatLng(e.latlng);
     $('#cursor-readout').textContent = `${gridOf(x, y)} · ${Math.round(x)}, ${Math.round(y)}`;
 });
-
-/* ---- vending + events ---- */
 
 function vendingPopup(vm) {
     const target = S.targets.find(t => t.id === String(vm.id));
@@ -647,8 +608,6 @@ function focusVending(id, x, y) {
     if (layer) setTimeout(() => layer.openPopup(), 650);
 }
 
-/* ---- team, deaths, notes ---- */
-
 function renderTeamMarkers() {
     if (!S.mapMeta || S.preview) return;
     const members = S.team?.members || [];
@@ -691,8 +650,6 @@ function renderDeathMarkers() {
     }
 }
 
-/* ================= top bar ================= */
-
 function renderInfo() {
     const pill = $('#server-pill');
     const status = S.snapshot?.status ?? 'offline';
@@ -725,7 +682,6 @@ function tickClock() {
     dn.textContent = c.isDay ? '☀ DAY' : '☾ NIGHT';
     dn.className = c.isDay ? 'day' : 'night';
     $('#sun-eta').textContent = `${c.isDay ? 'Sunset' : 'Sunrise'} ${dur(c.until)}`;
-    // progress through the current day or night phase
     const len = c.isDay ? c.t.sunset - c.t.sunrise : 24 - (c.t.sunset - c.t.sunrise);
     const done = c.isDay ? c.now - c.t.sunrise : (c.now - c.t.sunset + 24) % 24;
     $('#phase-bar').style.width = `${Math.min(100, Math.max(0, done / len * 100))}%`;
@@ -756,8 +712,6 @@ setInterval(() => {
     $$('#event-chips [data-since]').forEach(el => el.textContent = dur(Date.now() - Number(el.dataset.since)));
 }, 1000);
 
-/* ================= toasts + desktop notifications ================= */
-
 const ALERT_STYLE = {
     teamDeath: '#d8412f', killedBy: '#d8412f', alarm: '#ff3b30', teamOnline: '#7cc043', teamOffline: '#8d8a85',
     sulfurSale: '#f07a2c', upkeep: '#e4a73a', cargo: '#3fa9f5', heli: '#ff3b30', ch47: '#c9d64a', crate: '#f0c23c', vendor: '#9b6bff'
@@ -773,14 +727,11 @@ function toast(a) {
     $('#toasts').prepend(el);
     setTimeout(() => el.classList.add('out'), 7000);
     setTimeout(() => el.remove(), 7600);
-    // The desktop app lives in the tray, so there notifications are on unless turned off.
     if (store.get('desktopNotify', !!window.desktop) && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
         const n = new Notification(a.label || 'RustScout', { body: a.text, tag: `${a.kind}-${a.t}` });
         n.onclick = () => { window.desktop?.show(); window.focus(); if (Number.isFinite(a.x)) flyTo(a.x, a.y); };
     }
 }
-
-/* ================= first run: link Steam, then pair ================= */
 
 const steamLinked = () => S.servers?.fcm === 'listening';
 
@@ -793,14 +744,12 @@ async function linkSteam() {
     bus.emit('servers');
     toast({ kind: 'teamOnline', label: 'Steam linked', text: 'Now in Rust: ESC → Rust+ → Pair with server.' });
 }
-// Shown while the app is open over the game (Ctrl+Alt+M), so it's obvious how to get back.
 window.desktop?.onAppOverlay(key => {
     document.body.classList.toggle('over-game', !!key);
-    if (key) document.body.dataset.backKey = key; // the hotkey actually in use (it may differ if another app took ours)
+    if (key) document.body.dataset.backKey = key; 
 });
 window.desktop?.onLinkProgress(p => p.step !== 3 && toast({ kind: 'teamOnline', label: `Linking ${p.step}/4`, text: p.text }));
 
-// The empty map doubles as the getting-started guide.
 function renderOnboarding() {
     const box = $('#map-empty');
     if (!box || !S.servers) return;
@@ -830,8 +779,6 @@ bus.on('servers', renderOnboarding);
 bus.on('status', renderOnboarding);
 bus.on('reset', renderOnboarding);
 
-/* ================= tabs ================= */
-
 function openTab(name) {
     const panel = $('#panel');
     $$('.rail button[data-panel]').forEach(b => b.classList.toggle('active', b.dataset.panel === name));
@@ -853,14 +800,11 @@ $('#panel-toggle').onclick = () => {
     $('#panel').classList.toggle('collapsed');
     setTimeout(() => map.invalidateSize(), 0);
 };
-// Wide tools (breeder, power) get a wider panel.
 bus.on('tab:breeder', () => $('#panel').classList.add('wide'));
 bus.on('tab:power', () => $('#panel').classList.add('wide'));
 for (const t of ['browse', 'shops', 'raid', 'team', 'threats', 'tracked', 'events', 'devices', 'chat', 'tools', 'recycle', 'settings']) {
     bus.on(`tab:${t}`, () => $('#panel').classList.remove('wide'));
 }
-
-/* ================= websocket ================= */
 
 function applySnapshot(snap) {
     S.snapshot = snap;

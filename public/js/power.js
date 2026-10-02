@@ -1,7 +1,6 @@
 'use strict';
 
 (() => {
-    // Typical draws in rW. Editable in the UI because patches shift these.
     const DEVICES = [
         ['Auto Turret', 10], ['SAM Site', 25], ['Ceiling Light', 2], ['Simple Light', 1], ['Search Light', 10],
         ['Flasher Light', 1], ['Siren Light', 1], ['Electric Heater', 3], ['Electric Furnace', 3], ['Water Pump', 5],
@@ -76,7 +75,6 @@
         ];
         const ok = checks.every(c => c[0]);
 
-        // Suggestions: extra panels to cover day load + recharge, and batteries for the night.
         const panelsNeeded = state.panelAvg > 0
             ? Math.max(0, Math.ceil((dayLoad + need / (EFFICIENCY * Math.max(1, state.dayMin)) - wind - gen) / state.panelAvg)) : null;
         const batt = nightDeficit > 0
@@ -96,8 +94,6 @@
             <p class="hint">Solar output follows the sun (0–20 rW). Wind depends on height (0–150 rW). Generator = 40 rW while fuelled.</p>`;
         renderBill();
     }
-
-    /* ---- crafting list for the whole setup ---- */
 
     const itemByName = name => Object.keys(S.items).find(id => S.items[id].n.toLowerCase() === String(name).trim().toLowerCase());
 

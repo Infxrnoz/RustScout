@@ -1,9 +1,3 @@
-# Extract map-related game data from your own Rust install (asset data only; no game code, nothing modified).
-# Needs: pip install UnityPy
-#   python scripts/extract-game-data.py "E:\steam\steamapps\common\Rust"
-# Writes data/facilities.json (facility positions inside every monument prefab, keyed by prefab id)
-# data/spawns.json (junkpile + dive site spawn tables), data/monuments.json (monument names) and
-# data/craft-yields.json (items made per craft).
 import gc, json, math, os, re, sys
 import UnityPy
 
@@ -32,11 +26,9 @@ def qmul(a, b):
 def qrot(q, v):
     x, y, z, w = q
     vx, vy, vz = v
-    # v' = q v q*
     ix = w*vx + y*vz - z*vy; iy = w*vy + z*vx - x*vz; iz = w*vz + x*vy - y*vx; iw = -x*vx - y*vy - z*vz
     return (ix*w + iw*-x + iy*-z - iz*-y, iy*w + iw*-y + iz*-x - ix*-z, iz*w + iw*-z + ix*-y - iy*-x)
 
-# 1. Prefab ids (pooled hashes) from the GameManifest in content.bundle.
 env = UnityPy.load(os.path.join(shared, "content.bundle"))
 ids = {}
 spawns = {}
@@ -59,7 +51,6 @@ for obj in env.objects:
 del env
 gc.collect()
 
-# Monument names for opened .map files: every autospawn monument prefab id -> a readable name.
 MON_NAMES = [("launch_site", "Launch Site"), ("airfield", "Airfield"), ("military_tunnel", "Military Tunnel"), ("powerplant", "Power Plant"),
     ("trainyard", "Train Yard"), ("water_treatment_plant", "Water Treatment Plant"), ("excavator", "Giant Excavator"),
     ("nuclear_missile_silo", "Missile Silo"), ("bandit_town", "Bandit Camp"), ("compound", "Outpost"), ("junkyard", "Junkyard"),
@@ -82,7 +73,6 @@ for pth, h in ids.items():
 json.dump(monuments, open(os.path.join(out_dir, "monuments.json"), "w"), separators=(",", ":"))
 print("monument names:", len(monuments))
 
-# 2. Facility positions inside every monument prefab (assetscenes.bundle).
 env = UnityPy.load(os.path.join(shared, "assetscenes.bundle"))
 
 def transform_of(go):
@@ -99,7 +89,6 @@ for obj in env.objects:
     if "/autospawn/monument/" not in path or path not in ids:
         continue
     found = []
-    # Walk the hierarchy carrying each node's position/rotation/scale relative to the monument root.
     stack = [(obj.read(), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 1.0), True)]
     while stack:
         go, pos, rot, scl, is_root = stack.pop()
@@ -129,8 +118,6 @@ json.dump({"source": "Rust client bundles via scripts/extract-game-data.py", "po
           open(os.path.join(out_dir, "spawns.json"), "w"), indent=1)
 print("monuments with facilities:", len(facilities), "| spawn tables:", list(spawns))
 
-# 3. How many items one craft makes (gunpowder 10, pistol ammo 4, …): ItemBlueprint.amountToCreate,
-#    matched to ItemDefinition.itemid on the same item prefab. Feeds data/craft-yields.json -> npm run build-data.
 del env
 gc.collect()
 env = UnityPy.load(os.path.join(shared, "items.preload.bundle"))

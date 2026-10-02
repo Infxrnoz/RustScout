@@ -1,5 +1,3 @@
-// Server browser: the full list comes from Steam's server list (needs a free Web API key);
-// single servers can be looked up by IP without a key. Details come from each server's own A2S reply.
 const a2s = require('./a2s');
 
 const LIST_TTL = 5 * 60e3;
@@ -8,8 +6,6 @@ const RUST_APPID = 252490;
 let listCache = { at: 0, key: null, servers: [], pending: null };
 const detailCache = new Map();
 
-// Rust puts population, wipe time and flags into the Steam keywords, e.g.
-// "mp150,cp15,qp0,v2633,^m,^v,EU,born1788457654,gmrust,cs165217,ts6"
 const FLAGS = { '^m': 'monthly', '^w': 'weekly', '^b': 'biweekly', '^v': 'vanilla', '^h': 'hardcore', '^s': 'softcore' };
 const REGIONS = ['EU', 'NA', 'SA', 'AS', 'AF', 'OC', 'WC', 'RU', 'CN'];
 
@@ -40,7 +36,6 @@ function fromSteam(s) {
     };
 }
 
-// Steam returns at most 10,000 servers per query and Rust has more, so ask for populated and empty ones separately.
 async function fetchList(key) {
     const query = async extra => {
         const url = `https://api.steampowered.com/IGameServersService/GetServerList/v1/?key=${encodeURIComponent(key)}`
@@ -81,13 +76,11 @@ function search(servers, { q = '', region = '', flag = '', minPlayers = 0, sort 
     return { total: out.length, servers: out.slice(offset, offset + limit) };
 }
 
-// Accepts "ip", "ip:gamePort" or "ip:queryPort"; Steam's keyless address lookup maps game ports to query ports.
 async function resolve(address) {
     const [host, port] = address.trim().replace(/^[a-z]+:\/\//i, '').split(/[:/]/);
     let ip = host;
     if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.split('.').some(n => +n > 255)) {
         if (/^[\d.]+$/.test(host || '')) throw new Error(`${host} is not a valid IP address`);
-        // Server owners often hand out a domain name ("play.example.com:28015").
         if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(host || '')) throw new Error('Enter an IPv4 address or host name, optionally with :port');
         ip = (await require('dns').promises.lookup(host, { family: 4 }).catch(() => { throw new Error(`Could not find ${host}`); })).address;
     }
@@ -97,7 +90,6 @@ async function resolve(address) {
     }));
     if (!port) return found;
     const hit = found.filter(s => s.gamePort === +port || s.queryPort === +port);
-    // Not registered with Steam: fall back to trying the port as a query port.
     return hit.length ? hit : [{ ip, queryPort: +port, gamePort: +port }];
 }
 
@@ -125,7 +117,6 @@ async function details(ip, queryPort) {
         pve: rules.pve === 'True',
         customMap: !!rules.level_url,
         levelUrl: rules.level_url || null,
-        // Custom maps hosted on RustMaps (maps.rustmaps.com/<save>/<id>/...) can be looked up there by id.
         rustMapsId: (rules.level_url || '').match(/rustmaps\.com\/\d+\/([0-9a-f]{32})\//i)?.[1] ?? null
     };
     detailCache.set(id, { at: Date.now(), data });

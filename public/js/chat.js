@@ -45,7 +45,7 @@
                 ? `Bot is <b class="ok">on</b>. Anyone in your team can type: ${s.commands.map(c => `<code data-cmd="${s.bot.prefix}${c}">${esc(s.bot.prefix + c)}</code>`).join(' ')}`
                 : 'Bot is <b>off</b> — turn it on in Settings.';
             $$('#bot-commands code').forEach(c => c.onclick = () => { $('#chat-input').value = c.dataset.cmd + ' '; $('#chat-input').focus(); });
-        } catch { /* backend down */ }
+        } catch {  }
     }
 
     bus.on('chat', m => m ? append(m) : renderAll());

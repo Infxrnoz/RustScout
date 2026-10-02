@@ -1,5 +1,3 @@
-// Reads a Rust .map file (the custom map a server publishes as level_url) and extracts its biome and
-// topology layers — the same layers the game's spawn rules filter on. Output is a compact 512×512 grid.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -14,7 +12,6 @@ function varint(buf, pos) {
     return [v, pos];
 }
 
-// Raw LZ4 block decoder (no frame header), as used by the map file's chunk stream.
 function lz4Block(src, dstLen) {
     const dst = Buffer.alloc(dstLen);
     let si = 0, di = 0;
@@ -35,7 +32,6 @@ function lz4Block(src, dstLen) {
     return dst.subarray(0, di);
 }
 
-// File = uint32 version, int64 timestamp (v9+), then chunks of: varint flags, varint length, [varint compressed], data.
 function decompress(file) {
     let pos = file.readUInt32LE(0) >= 9 ? 12 : 4;
     const parts = [];
@@ -55,7 +51,6 @@ function decompress(file) {
     return Buffer.concat(parts);
 }
 
-// VectorData { 1: x, 2: y, 3: z } as float32 (missing fields are 0).
 function readVector(buf) {
     const v = [0, 0, 0];
     let q = 0;
@@ -67,7 +62,6 @@ function readVector(buf) {
     return v;
 }
 
-// PrefabData { 1: category, 2: id, 3: position, 4: rotation (euler degrees), 5: scale }.
 function readPrefab(body) {
     let q = 0;
     const p = { id: 0, pos: [0, 0, 0], rot: [0, 0, 0], scale: [1, 1, 1] };
@@ -85,8 +79,6 @@ function readPrefab(body) {
     return p;
 }
 
-// WorldData protobuf: field 1 = world size, field 2 = MapData { 1: name, 2: bytes }, field 3 = PrefabData.
-// Only prefabs whose id is in `wantIds` are kept. `full` also keeps the height and water layers (for drawing the map).
 function readLayers(data, wantIds, full = false) {
     let p = 0, size = 0;
     const layers = {};
@@ -119,7 +111,6 @@ function readLayers(data, wantIds, full = false) {
     return { size, layers, prefabs };
 }
 
-// Unity Quaternion.Euler(x, y, z): rotate around Z, then X, then Y.
 function eulerQuat([ex, ey, ez]) {
     const r = Math.PI / 180;
     const [hx, hy, hz] = [ex * r / 2, ey * r / 2, ez * r / 2];
@@ -138,7 +129,6 @@ function rotate([x, y, z, w], [vx, vy, vz]) {
     return [ix * w + iw * -x + iy * -z - iz * -y, iy * w + iw * -y + iz * -x - ix * -z, iz * w + iw * -z + ix * -y - iy * -x];
 }
 
-// Facility world positions (Rust+ coordinates: 0..size, y = north) from placed monuments + data/facilities.json.
 function placeFacilities(prefabs, facilities, size) {
     const out = [];
     for (const pf of prefabs) {
@@ -154,12 +144,7 @@ function placeFacilities(prefabs, facilities, size) {
     return out;
 }
 
-// Per-ore spawn likelihood at the map's full topology resolution, summed into RES×RES cells.
-// For each live ore population: SpawnFilter factor (biome weight × splat weight, topology must pass)
-// × target density × the ore's share of that population's prefab folder. Tables come from data/ores.json.
-// Junkpiles and dive sites use the same model with their own spawn tables (data/spawns.json).
 const ORE_KINDS = ['stone', 'metal', 'sulfur', 'hqm', 'junkpile', 'divesite'];
-// Water junkpiles (junkpiles_water) are left out: low density over the whole ocean would swamp the roadside piles.
 const SPAWN_KIND = { junkpiles: 'junkpile', divesites: 'divesite' };
 function oreModel(layers, tables, spawnTables) {
     const topoRes = Math.round(Math.sqrt(layers.topology.length / 4));
@@ -201,14 +186,6 @@ function oreModel(layers, tables, spawnTables) {
     return out;
 }
 
-// Output (row 0 = south edge), all at RES×RES:
-//   header: RES, world size, biome channel count, splat channel count (uint32 each)
-//   biome weights  [channel][z][x] bytes  (arid, temperate, tundra, arctic, jungle)
-//   splat weights  [channel][z][x] bytes  (dirt, snow, sand, rock, grass, forest, stones, gravel)
-//   topology flags [z][x] int32
-//   spawn likelihood [stone, metal, sulfur, hqm, junkpile, divesite][z][x] float32 (only when ore tables are given)
-// Returns { grid, facilities }.
-// opts.monumentNames ({prefabId: name}) adds a monument list; opts.preview adds a rendered PNG of the map.
 function extract(file, oreTables, spawnTables, facilityTable, opts = {}) {
     let wantIds = facilityTable ? new Set(Object.keys(facilityTable.monuments).map(Number)) : null;
     if (opts.monumentNames) {
@@ -255,8 +232,6 @@ function extract(file, oreTables, spawnTables, facilityTable, opts = {}) {
     return result;
 }
 
-// Returns { grid: Buffer, facilities: [...] }, cached on disk per map URL.
-// A map file the user opened from disk is cached by content hash and addressed as "mapfile:<hash>".
 const FILE_KEY = /^mapfile:([0-9a-f]{40})$/;
 
 async function loadFile(buf, cacheDir, tables = {}, name = 'map') {
@@ -288,7 +263,6 @@ async function loadFile(buf, cacheDir, tables = {}, name = 'map') {
     return meta;
 }
 
-// Map files opened before, newest first.
 function listFiles(cacheDir) {
     if (!fs.existsSync(cacheDir)) return [];
     return fs.readdirSync(cacheDir).filter(f => f.endsWith('.mapfile.json'))

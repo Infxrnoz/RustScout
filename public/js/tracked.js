@@ -92,7 +92,6 @@
                 load();
             } catch (err) { toast({ kind: 'alarm', label: 'Couldn’t add player', text: err.message }); }
         };
-        // One group: add straight away. Several: swap the button for a group picker.
         $$('#tracked-server [data-track]').forEach(b => b.onclick = () => {
             const groups = data.groups;
             if (groups.length === 1) return track(b.dataset.track, groups[0]);
@@ -120,7 +119,7 @@
     };
     $('#tracked-refresh').onclick = async () => {
         $('#tracked-refresh').disabled = true;
-        try { data = await api('/api/tracked/refresh', { method: 'POST' }); render(); } catch { /* shown on next load */ }
+        try { data = await api('/api/tracked/refresh', { method: 'POST' }); render(); } catch {  }
         $('#tracked-refresh').disabled = false;
     };
     $('#tracked-filter').oninput = render;

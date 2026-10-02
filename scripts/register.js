@@ -1,6 +1,3 @@
-// One-time setup: registers this PC for Rust+ pairing notifications and links your Steam account.
-// Same steps as `npx rustplus fcm-register`, but on its own port and with its own throwaway browser profile,
-// so it doesn't clash with the app or open in your normal browser.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -11,8 +8,6 @@ const { register, LOGIN_URL } = require('../src/register');
 const PORT = 3100;
 const OUT = path.join(__dirname, '..', 'rustplus.config.json');
 
-// The Rust+ login page hands the token to the phone app via window.ReactNativeWebView.postMessage.
-// We open it as a popup and provide that function ourselves, which needs web security off in a throwaway profile.
 const PAIR_PAGE = `<!doctype html><meta charset="utf-8"><title>RustScout — link Steam</title>
 <body style="font:16px system-ui;background:#111;color:#eee;display:grid;place-items:center;height:100vh;margin:0">
 <div style="max-width:460px;text-align:center"><h2>Link your Steam account</h2>
@@ -74,7 +69,7 @@ async function getSteamToken() {
         return await token;
     } finally {
         server.close();
-        try { await browser.kill(); } catch { /* already closed */ }
+        try { await browser.kill(); } catch {  }
         fs.rm(profile, { recursive: true, force: true }, () => {});
     }
 }

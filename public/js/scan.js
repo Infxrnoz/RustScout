@@ -1,7 +1,5 @@
 'use strict';
 
-// Screenshot reading (OCR) for decay HP and plant genes. tesseract.js runs in the browser and is only
-// downloaded the first time a screenshot is scanned.
 const Scan = (() => {
     const LIB = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
     let worker = null;
@@ -20,7 +18,6 @@ const Scan = (() => {
     async function getWorker() {
         if (!worker) {
             await loadLib();
-            // If the language data fails to download, forget the failed attempt so the next scan retries.
             worker = Tesseract.createWorker('eng').catch(e => {
                 worker = null;
                 throw new Error(`Could not start the screenshot reader (${e?.message || e}). Check your internet and try again.`);
@@ -38,8 +35,6 @@ const Scan = (() => {
         });
     }
 
-    // Rust's UI text is light on dark. Turn it into black-on-white, which Tesseract reads far better.
-    // 'white' keeps only near-white pixels (text on coloured boxes); 'bright' keeps any bright colour.
     function binarize(img, mode, crop) {
         const sx = crop ? crop.x * img.width : 0, sy = crop ? crop.y * img.height : 0;
         const sw = crop ? crop.w * img.width : img.width, sh = crop ? crop.h * img.height : img.height;
@@ -70,8 +65,6 @@ const Scan = (() => {
         return out.join('\n');
     }
 
-    // Find each letter as a connected blob of ink, group blobs into rows, and redraw every row with even
-    // spacing. Tesseract misreads the gaps between gene boxes; one clean row of six glyphs it reads well.
     function glyphRows(canvas) {
         const { width: w, height: h } = canvas;
         const px = canvas.getContext('2d').getImageData(0, 0, w, h).data;
@@ -100,7 +93,6 @@ const Scan = (() => {
         }
         const glyphs = boxes.filter(b => b.n > 30).map(b => ({ ...b, bw: b.x1 - b.x0 + 1, bh: b.y1 - b.y0 + 1, cy: (b.y0 + b.y1) / 2 }))
             .sort((a, b) => a.cy - b.cy);
-        // Rows by vertical centre; then keep only glyphs of that row's typical letter height.
         const rows = [];
         for (const g of glyphs) {
             const row = rows.find(r => Math.abs(r.cy - g.cy) < Math.max(r.h, g.bh) * 0.4);
@@ -131,7 +123,6 @@ const Scan = (() => {
         return out;
     }
 
-    // Each detected row of six letter blobs, read on its own. Falls back to whole-image text.
     async function genes(blob) {
         const img = await loadImage(blob);
         const w = await getWorker();
@@ -147,10 +138,6 @@ const Scan = (() => {
         return parseGenes(await text(blob, { whitelist: 'GYHWX ', psm: '6' }));
     }
 
-    /* ---- parsers ---- */
-
-    // Hammer view shows the structure name and "current / max" HP. OCR often reads the thin slash
-    // as "1", "7" or "17", so digit runs are also split around one or two dropped characters.
     function parseDecay(raw, table) {
         const t = raw.toUpperCase().replace(/[|\\]/g, '/').replace(/[OQ](?=\d)|(?<=\d)[OQ]/g, '0');
         const flat = t.replace(/[^A-Z0-9]+/g, ' ');
@@ -182,7 +169,6 @@ const Scan = (() => {
         return { item, hp, max };
     }
 
-    // Gene strings: six of G/Y/H/W/X per plant, often OCR'd with spaces between the boxes.
     function parseGenes(raw) {
         const found = new Set();
         const loose = [];
@@ -191,20 +177,15 @@ const Scan = (() => {
             for (const r of runs) if (r.length === 6) found.add(r);
             if (/^[\sGYHWX]+$/.test(line) && line.trim()) loose.push(...line.replace(/\s/g, ''));
         }
-        // Boxes read one letter per line: regroup in sixes when that splits evenly.
         if (!found.size && loose.length && loose.length % 6 === 0)
             for (let i = 0; i < loose.length; i += 6) found.add(loose.slice(i, i + 6).join(''));
         return [...found];
     }
 
-    /* ---- input plumbing: button, paste, drag-and-drop ---- */
-
     function images(list) {
         return [...(list || [])].filter(f => f.type?.startsWith('image/') || f.kind === 'file').map(f => f.getAsFile ? f.getAsFile() : f).filter(Boolean);
     }
 
-    // onFiles gets image Blobs; active() says whether this target should take pasted images right now.
-    // onReject(message) is called when something that isn't an image is dropped or picked.
     function attach({ button, drop, multiple, active, onFiles, onReject = () => {} }) {
         const NOT_IMAGE = 'Only screenshots (PNG / JPG images) can be scanned.';
         const input = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: !!multiple, hidden: true });

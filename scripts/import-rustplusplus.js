@@ -1,4 +1,3 @@
-// Copies servers already paired in rustplusplus (instances/*.json) into data/servers.json.
 const fs = require('fs');
 const path = require('path');
 
@@ -6,7 +5,7 @@ const instancesDir = process.argv[2] || path.join(__dirname, '..', '..', 'rustpl
 const serversFile = path.join(process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, '..', 'data'), 'servers.json');
 
 let store = { active: null, list: {} };
-try { store = JSON.parse(fs.readFileSync(serversFile, 'utf8')); } catch { /* first run */ }
+try { store = JSON.parse(fs.readFileSync(serversFile, 'utf8')); } catch {  }
 
 let added = 0;
 for (const file of fs.readdirSync(instancesDir).filter(f => f.endsWith('.json'))) {

@@ -1,9 +1,6 @@
 'use strict';
 
-// Resource filters: monument-based markers (keycards, recyclers, safe zones, water wells, caves).
-// Keycard and recycler lists follow rustly.com/keycards and rustly.com/rust-recyclers.
 const resources = (() => {
-    // Canonical monument keys from Rust+ names ("Launch Site") and RustMaps types ("Large Oilrig", "Water Well A").
     const KEYS = [
         [/mining outpost/, 'miningoutpost'], [/large fishing|fishing village/, 'fishing'], [/^outpost$/, 'outpost'],
         [/bandit/, 'bandit'], [/harbou?r/, 'harbor'], [/satellite/, 'satellite'], [/sewer/, 'sewer'],
@@ -26,18 +23,14 @@ const resources = (() => {
         'sewer', 'satellite', 'dome', 'harbor', 'junkyard', 'excavator', 'arctic', 'silo', 'ferry', 'radtown', 'largeoil', 'smalloil',
         'uwlab', 'gas', 'supermarket', 'miningoutpost', 'lighthouse', 'ranch', 'barn'];
     const SAFE = ['outpost', 'bandit', 'fishing'];
-    // Diesel barrel spawns (itemlevel.net 2026 diesel guide; matches physgun.com and corrosionhour.com's lists).
     const DIESEL = ['radtown', 'junkyard', 'dome', 'powerplant', 'airfield', 'watertreatment', 'smalloil', 'largeoil', 'miltunnels', 'silo'];
 
     const NO_SOURCE = 'Not available: neither Rust+ nor RustMaps publish where these are.';
     
-    // Spawn zones from the server's map file: biome (0 desert, 1 forest, 2 tundra, 3 snow, 4 jungle) + terrain flags,
-    // following RustHelp's "Found in Biomes / Topologies" tables (verified Aug 2026). They show where an item CAN spawn.
     const TOPO = { Field: 1, Forest: 32, Forestside: 64, Swamp: 8192, Riverside: 32768, Lakeside: 131072 };
-    const BLOCKED = 128 | 262144 | 16384 | 65536 | 1024 | 2097152 | 2048 | 524288; // ocean, offshore, river, lake, monument, building, road, rail
+    const BLOCKED = 128 | 262144 | 16384 | 65536 | 1024 | 2097152 | 2048 | 524288; 
     const zone = (id, name, color, icon, rules, note) => ({ id, name, color, icon, zone: rules, note });
     const FOREST_PLANT = [{ biomes: [1, 2, 4], any: TOPO.Forest }];
-    // `heat` items mark the densest spawn spots of that RustMaps layer; `keys` items mark monuments.
     const hot = (id, name, layerName, color) => ({ id, name, heat: layerName, color, icon: HEAT_ICON[layerName] });
     const GROUPS = [
         ['Ores', [
@@ -61,8 +54,6 @@ const resources = (() => {
                 'fields, forests and swamps in forest, tundra or snow'),
             { name: 'Beehives', off: 'Not available: beehives are player-placed, and wild hives have no spawn table in the game files, Rust+ or RustMaps.' }
         ]],
-        // `fac` items use exact positions from the server's map file + monument layouts read from Rust's own files;
-        // the card/recycler ones fall back to whole-monument pins (Rustly lists) when there's no map file.
         ['Loot', [
             { id: 'green', name: 'Green Card', color: '#4caf50', icon: 'keycard_green', fac: 'card_green', keys: GREEN },
             { id: 'blue', name: 'Blue Card', color: '#3f8cff', icon: 'keycard_blue', fac: 'card_blue', keys: BLUE },
@@ -102,20 +93,17 @@ const resources = (() => {
     const layer = L.layerGroup();
     let enabled = new Set(store.get('resourceFilters', []));
 
-    // RustMaps' list covers wells and caves; Rust+ only knows the named monuments.
     function monuments() {
         if (!S.mapMeta) return [];
         const half = S.mapMeta.mapSize / 2;
         const rm = heat.info?.state === 'ready' ? heat.info.map.monuments : null;
         if (rm) return rm.filter(m => Number.isFinite(m.x)).map(m => ({ name: m.type, x: m.x + half, y: m.y + half }));
-        // Skip raw prefab paths (e.g. underwater lab modules) — they duplicate the named monument.
         return (S.mapMeta.monuments || []).filter(m => monumentName(m.token)).map(m => ({ name: monumentName(m.token), x: m.x, y: m.y }));
     }
 
     const heatLayer = name => heat.info?.state === 'ready' ? heat.info.map.heatMaps.find(h => h.name === name) : null;
     let drawToken = 0;
 
-    /* ---- terrain grid (biome + topology) from the server's map file ---- */
     const terrainState = { url: null, state: 'none', grid: null, error: null };
     const zoneCache = new Map();
 
@@ -137,17 +125,14 @@ const resources = (() => {
             const splatW = new Uint8Array(buf, 16 + N * bc, N * sc);
             const topoAt = 16 + N * (bc + sc);
             const topo = new Int32Array(buf.slice(topoAt, topoAt + N * 4));
-            // Per-ore likelihood, computed server-side at the map's full resolution.
             const oreAt = topoAt + N * 4;
             const KINDS = ['stone', 'metal', 'sulfur', 'hqm', 'junkpile', 'divesite'];
             const ores = buf.byteLength >= oreAt + N * 16
                 ? Object.fromEntries(KINDS.filter((k, n) => buf.byteLength >= oreAt + (n + 1) * N * 4)
                     .map((k, n) => [k, new Float32Array(buf.slice(oreAt + n * N * 4, oreAt + (n + 1) * N * 4))]))
                 : null;
-            // Exact facility positions inside monuments (same map file, cached server-side).
             terrainState.facilities = await fetch(`/api/facilities?url=${encodeURIComponent(url)}`).then(r => r.ok ? r.json() : null).catch(() => null);
             if (terrainState.url !== url) return;
-            // Dominant biome per cell, for the zone filters.
             const biome = new Uint8Array(N);
             for (let i = 0; i < N; i++) {
                 let best = 0;
@@ -166,7 +151,6 @@ const resources = (() => {
         heat.render();
     }
 
-    // Per-ore spawn likelihood from the server (map file + Rust's spawn tables in data/ores.json).
     function oreGrid(kind) {
         const o = terrainState.ores;
         return o ? { res: o.res, size: o.size, values: o.values[kind] } : null;
@@ -189,7 +173,7 @@ const resources = (() => {
                 const hit = f.zone.some(rule => rule.biomes.includes(biome[i]) && (!rule.any || (topo[i] & rule.any)));
                 if (!hit) continue;
                 cells++;
-                const o = ((res - 1 - z) * res + x) * 4; // grid row 0 is the south edge; canvas row 0 is the top
+                const o = ((res - 1 - z) * res + x) * 4; 
                 img.data[o] = r; img.data[o + 1] = gr; img.data[o + 2] = b; img.data[o + 3] = 120;
             }
         }
@@ -205,7 +189,6 @@ const resources = (() => {
         if (!S.mapMeta) return;
         const meta = S.mapMeta;
 
-        // Spawn zones: tinted areas where the game's rules let the item spawn.
         if (terrainState.state === 'ready') {
             const half = meta.mapSize / 2;
             for (const f of FILTERS.filter(x => x.zone && enabled.has(x.id))) {
@@ -214,7 +197,6 @@ const resources = (() => {
             }
         }
 
-        // Ore-by-type hotspots from the spawn-table model.
         for (const f of FILTERS.filter(x => x.ore && enabled.has(x.id))) {
             const grid = oreGrid(f.ore);
             if (!grid) continue;
@@ -228,7 +210,6 @@ const resources = (() => {
             }
         }
 
-        // Hotspots: the strongest density peaks of each enabled RustMaps layer.
         for (const f of FILTERS.filter(x => x.heat && enabled.has(x.id))) {
             const h = heatLayer(f.heat);
             if (!h) continue;
@@ -244,7 +225,6 @@ const resources = (() => {
             }
         }
 
-        // Exact facility pins from the map file.
         const facs = terrainState.facilities;
         if (facs) {
             for (const f of FILTERS.filter(x => x.fac && enabled.has(x.id))) {
@@ -270,7 +250,6 @@ const resources = (() => {
         layer.addTo(map);
     }
 
-    // Why RustMaps-only items are greyed out, per the state the heatmap lookup ended in.
     function rmMissing() {
         if (S.mapMeta?.mapFile) return 'RustMaps heatmaps need a live server (its seed); for a map file, use the ore and spawn-zone filters.';
         return {

@@ -1,7 +1,6 @@
 'use strict';
 
 (() => {
-    // The active server's real state, not just "selected".
     function liveStatus() {
         const st = S.snapshot?.status || 'connecting';
         if (st === 'online') return '<b class="ok">connected</b>';
@@ -80,7 +79,6 @@
             });
             toast({ kind: 'teamOnline', label: 'Saved', text: 'Settings updated' });
             loadSettings();
-            // The bot needs a moment to log in; show its status once it has.
             setTimeout(loadSettings, 4000);
         } catch (e) { toast({ kind: 'alarm', label: 'Not saved', text: e.message }); }
     }
@@ -99,15 +97,12 @@
         store.set('desktopNotify', e.target.checked);
     };
 
-    /* ---------- in-game overlay + crosshair (desktop app only) ---------- */
-
     if (window.desktop) {
         $('#overlay-settings').hidden = false;
         const XH = ['size', 'gap', 'thickness', 'opacity'];
         let ov = null;
         const preview = () => {
             const cv = $('#xh-preview'), ctx = cv.getContext('2d');
-            // A dusky "night in game" backdrop, so colour and outline choices read true.
             const g = ctx.createLinearGradient(0, 0, 0, cv.height);
             g.addColorStop(0, '#3c4a52'); g.addColorStop(0.6, '#2a3024'); g.addColorStop(1, '#1b1d18');
             ctx.fillStyle = g; ctx.fillRect(0, 0, cv.width, cv.height);
@@ -132,9 +127,8 @@
         $('#xh-outline').onchange = e => send({ crosshair: { outline: e.target.checked } });
         $('#xh-dot').onchange = e => send({ crosshair: { dot: e.target.checked } });
         for (const k of XH) $(`#xh-${k}`).oninput = e => send({ crosshair: { [k]: Number(e.target.value) } });
-        window.desktop.onOverlay(fill); // hotkeys and the tray change it too
+        window.desktop.onOverlay(fill); 
         (async () => {
-            // Show the keys actually in use: if another program owns one, the app falls back to another.
             const keys = await window.desktop.hotkeys();
             for (const k of ['app', 'hud', 'crosshair']) $(`#key-${k}`).textContent = keys[k];
             const displays = await window.desktop.displays();

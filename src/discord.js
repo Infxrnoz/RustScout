@@ -1,10 +1,7 @@
-// Minimal Discord bot over the gateway (no discord.js): reads "!command" messages in one channel and replies.
 const WebSocket = require('ws');
 
-// Overridable only so tests can point the bot at a fake Discord.
 const API = process.env.DISCORD_API || 'https://discord.com/api/v10';
 const GATEWAY = process.env.DISCORD_GATEWAY || 'wss://gateway.discord.gg/?v=10&encoding=json';
-// GUILDS | GUILD_MESSAGES | MESSAGE_CONTENT (privileged: must be switched on in the Developer Portal).
 const INTENTS = (1 << 0) | (1 << 9) | (1 << 15);
 const FATAL = {
     4004: 'Bot token was rejected — copy it again from the Developer Portal (Bot → Reset Token)',
@@ -13,7 +10,6 @@ const FATAL = {
 };
 
 class DiscordBot {
-    // opts: { token, channelId, prefix, onCommand(cmd, args, msg) → string|null, log }
     constructor(opts) {
         this.opts = opts;
         this.status = 'off';
@@ -36,7 +32,7 @@ class DiscordBot {
         this.stopped = true;
         clearInterval(this.beat);
         clearTimeout(this.retry);
-        try { this.ws?.close(1000); } catch { /* already closed */ }
+        try { this.ws?.close(1000); } catch {  }
         this.ws = null;
         this.status = 'off';
     }
@@ -71,7 +67,6 @@ class DiscordBot {
         } else if (op === 1) {
             this.send(1, this.seq);
         } else if (op === 7 || op === 9) {
-            // Reconnect requested / session invalidated: start a fresh session.
             this.ws.close(4000);
         } else if (op === 0 && t === 'READY') {
             this.user = d.user;
@@ -91,7 +86,6 @@ class DiscordBot {
         if (reply) await this.post(reply, m.id);
     }
 
-    // Plain text, or { title, description, color } for an embed.
     async post(body, replyTo) {
         const payload = typeof body === 'string'
             ? { content: body.slice(0, 1900) }

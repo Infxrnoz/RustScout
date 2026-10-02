@@ -32,11 +32,8 @@
 
     const bindRows = root => $$(`${root} .server-row`).forEach(el => el.onclick = () => select(el.dataset.ip, +el.dataset.port));
 
-    /* ---------- list ---------- */
-
     let searchSeq = 0;
     async function search(reset = true) {
-        // A slow earlier request (e.g. the first full-list load) must not overwrite a newer search.
         const seq = ++searchSeq;
         if (reset) offset = 0;
         const params = new URLSearchParams({
@@ -95,11 +92,9 @@
         } catch (err) { out.innerHTML = empty(esc(err.message)); }
     };
 
-    /* ---------- watch list ---------- */
-
     async function renderWatch() {
         let list = [];
-        try { list = await api('/api/watch'); } catch { /* backend down */ }
+        try { list = await api('/api/watch'); } catch {  }
         $('#br-watch-wrap').style.display = list.length ? '' : 'none';
         $('#br-watch').innerHTML = list.map(w => `
             <div class="item server-row ${w.online ? '' : 'dim'}" data-ip="${esc(w.ip)}" data-port="${w.queryPort}">
@@ -109,8 +104,6 @@
             </div>`).join('');
         bindRows('#br-watch');
     }
-
-    /* ---------- details + map preview ---------- */
 
     async function select(ip, port) {
         const card = $('#br-detail');
@@ -177,7 +170,6 @@
             mapSize: d.size || 4000, monuments: [], version: d.id, seed: d.seed, custom: d.customMap, rustMapsId: d.rustMapsId, levelUrl: d.levelUrl
         });
         loadMap(meta(3000, 3000));
-        // Facepunch renders at a size that varies with the map; resize once the real image dimensions are known.
         const img = new Image();
         img.onload = () => {
             if (S.preview !== d || (img.naturalWidth === 3000 && img.naturalHeight === 3000)) return;
@@ -195,8 +187,6 @@
         $('#preview-banner').classList.remove('on');
         loadMap(S.snapshot?.mapMeta ?? null);
     }
-
-    /* ---------- .map files opened from disk ---------- */
 
     async function openMapFile(file) {
         if (!/\.map$/i.test(file.name)) return toast({ kind: 'alarm', label: 'Not a map file', text: 'Pick a Rust .map file (servers publish them; RustMaps lets you download them).' });
@@ -250,7 +240,6 @@
     document.body.appendChild(picker);
     picker.onchange = () => { const f = picker.files[0]; picker.value = ''; if (f) openMapFile(f); };
     $('#mf-open').onclick = () => picker.click();
-    // Drop a .map file anywhere. (Screenshots dropped on the scan areas are handled there.)
     document.addEventListener('dragover', e => { if ([...(e.dataTransfer?.items || [])].some(i => i.kind === 'file')) e.preventDefault(); });
     document.addEventListener('drop', e => {
         const f = [...(e.dataTransfer?.files || [])].find(x => /\.map$/i.test(x.name));
@@ -266,7 +255,6 @@
         if (!$('#br-results').children.length) search();
     });
     bus.on('watch', renderWatch);
-    // Pairing the previewed server in game makes the backend connect to it; drop the preview when that lands.
     bus.on('reset', () => {
         if (!S.preview || !S.snapshot) return;
         const live = S.servers?.list.find(s => s.id === S.snapshot.server.id);

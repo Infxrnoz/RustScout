@@ -25,7 +25,7 @@ class VendingTracker {
         this.state = { wipeTime: 0, machines: {}, sales: [] };
         try {
             this.state = JSON.parse(fs.readFileSync(file, 'utf8'));
-        } catch { /* fresh server */ }
+        } catch {  }
         this.saveTimer = setInterval(() => this.save(), 30000);
     }
 
@@ -35,11 +35,9 @@ class VendingTracker {
         this.dirty = true;
     }
 
-    // Returns the sales detected in this poll.
     update(markers, now = Date.now()) {
         const machines = markers.filter(m => m.type === 3);
         const known = Object.values(this.state.machines).filter(m => m.active).length;
-        // An empty vending list while we know of many shops is an API hiccup, not a mass wipe.
         if (machines.length === 0 && known > 5) return [];
 
         const seen = new Set();
@@ -96,7 +94,6 @@ class VendingTracker {
             };
             agg.trades += s.trades;
             agg.lastSale = Math.max(agg.lastSale, s.t);
-            // The owner collects the currency, so a shop taking sulfur as payment is stockpiling it.
             if (SULFUR.has(s.currencyId)) agg.sulfurCollected += s.paid;
             if (SULFUR.has(s.itemId)) agg.sulfurSold += s.qty;
             for (const [tag, ids] of Object.entries(TAGS)) {

@@ -1,13 +1,9 @@
-# Refresh data/ores.json from your own Rust install after a game update.
-# Reads asset data only (no game code, nothing modified). Needs: pip install UnityPy
-#   python scripts/extract-ore-tables.py "C:\Program Files (x86)\Steam\steamapps\common\Rust"
 import json, os, sys
 import UnityPy
 
 rust = sys.argv[1] if len(sys.argv) > 1 else r"C:\Program Files (x86)\Steam\steamapps\common\Rust"
 shared = os.path.join(rust, "Bundles", "shared")
 
-# 1. Which populations the procedural spawn handler uses, and each ore folder's prefab weights.
 env = UnityPy.load(os.path.join(shared, "assetscenes.bundle"))
 handler_ids, weights = [], {}
 for obj in env.objects:
@@ -28,11 +24,10 @@ for obj in env.objects:
         w = weights.setdefault(folder, {})
         if cls == "PrefabParameters":
             w[kind] = t["Count"]
-        elif t.get("Era") == 0:  # Era 10 = Primitive mode only
+        elif t.get("Era") == 0:
             w[kind] = w.get(kind, 1) * t["Scale"]
 del env
 
-# 2. Population filters + densities from content.bundle.
 env = UnityPy.load(os.path.join(shared, "content.bundle"))
 pops = {}
 for obj in env.objects:

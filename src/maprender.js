@@ -1,20 +1,15 @@
-// Draws a Rust map from its .map file layers: ground texture (splat) colours, hill shading from the
-// heightmap, and sea/lakes/rivers from the height and water layers. Returns a PNG (no grid, no pins —
-// the app draws those itself).
 const zlib = require('zlib');
 
-// Splat channels: dirt, snow, sand, rock, grass, forest, stones, gravel.
 const SPLAT = [[138, 112, 78], [235, 240, 245], [214, 196, 146], [120, 116, 108], [102, 132, 60], [70, 98, 46], [140, 136, 126], [150, 140, 120]];
 
 function render({ height, water, splat }, px = 2048) {
     const hres = Math.round(Math.sqrt(height.length / 2));
     const wres = water ? Math.round(Math.sqrt(water.length / 2)) : 0;
     const sres = Math.round(Math.sqrt(splat.length / 8));
-    // Heights are 0..32767 for -500..+500 m, so 0.5 is sea level.
     const H = (x, z) => height.readUInt16LE((Math.max(0, Math.min(hres - 1, z)) * hres + Math.max(0, Math.min(hres - 1, x))) * 2) / 32768;
     const img = Buffer.alloc(px * px * 4);
     for (let iy = 0; iy < px; iy++) {
-        const v = 1 - (iy + 0.5) / px; // row 0 of the image is the north edge
+        const v = 1 - (iy + 0.5) / px;
         for (let ix = 0; ix < px; ix++) {
             const u = (ix + 0.5) / px;
             const hx = Math.min(hres - 1, Math.floor(u * hres)), hz = Math.min(hres - 1, Math.floor(v * hres));
@@ -33,7 +28,7 @@ function render({ height, water, splat }, px = 2048) {
             const wl = water ? water.readUInt16LE((Math.min(wres - 1, Math.floor(v * wres)) * wres + Math.min(wres - 1, Math.floor(u * wres))) * 2) / 32768 : 0;
             const surface = Math.max(0.5, wl);
             if (h < surface) {
-                const d = Math.min(1, (surface - h) * 40); // deeper = darker
+                const d = Math.min(1, (surface - h) * 40);
                 r = 40 + 30 * (1 - d); g = 92 + 40 * (1 - d); b = 120 + 30 * (1 - d);
             }
             const i = (iy * px + ix) * 4;
