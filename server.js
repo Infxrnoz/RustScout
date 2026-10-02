@@ -1,0 +1,1100 @@
+const fs = require('fs');
+const path = require('path');
+const http = require('http');
+const express = require('express');
+const { WebSocketServer } = require('ws');
+const RustPlus = require('@liamcottle/rustplus.js');
+const PushReceiverClient = require('@liamcottle/push-receiver/src/client');
+const { VendingTracker, SULFUR } = require('./src/vending');
+const { TeamTracker, EventTracker, PopTracker } = require('./src/trackers');
+const { Devices } = require('./src/devices');
+const { Persisted } = require('./src/persist');
+const { Pins } = require('./src/pins');
+const geo = require('./src/geo');
+const { DiscordBot } = require('./src/discord');
+const chatbot = require('./src/chatbot');
+const steam = require('./src/steam');
+const browser = require('./src/browser');
+const rustmaps = require('./src/rustmaps');
+const terrain = require('./src/terrain');
+const { Tracking } = require('./src/tracking');
+
+const ROOT = __dirname;
+const STATIC = path.join(ROOT, 'data');
+// Paired servers and tracked history; DATA_DIR keeps a test copy's state apart from the real one.
+const DATA = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : STATIC;
+const CONFIG_FILE = process.env.CONFIG_FILE ? path.resolve(process.env.CONFIG_FILE) : path.join(ROOT, 'config.json');
+// The desktop app keeps the Rust+ login with the rest of its data (the install folder is read-only).
+const CREDS_FILE = process.env.RUSTPLUS_CONFIG ? path.resolve(process.env.RUSTPLUS_CONFIG) : path.join(ROOT, 'rustplus.config.json');
+const SERVERS_FILE = path.join(DATA, 'servers.json');
+
+const ALERT_KINDS = {
+    teamDeath: 'Teammate died', teamOnline: 'Teammate online', teamOffline: 'Teammate offline', teamRespawn: 'Teammate respawned',
+    killedBy: 'You were killed', alarm: 'Smart alarm', cargo: 'Cargo spawned', cargoGone: 'Cargo left', heli: 'Heli spawned',
+    heliGone: 'Heli gone', ch47: 'Chinook spawned', crate: 'Locked crate', vendor: 'Travelling vendor', explosion: 'Explosion',
+    sulfurSale: 'Sulfur sale', chat: 'Team chat', upkeep: 'TC upkeep low', watchWipe: 'Watched server wiped',
+    trackedOnline: 'Tracked player joined', trackedOffline: 'Tracked player left', decay: 'Decay timer'
+};
+const DEFAULT_ALERTS = Object.fromEntries(Object.keys(ALERT_KINDS).map(k => [k, {
+    toast: !['teamRespawn', 'chat', 'explosion', 'cargoGone', 'heliGone'].includes(k),
+    discord: ['teamDeath', 'killedBy', 'alarm', 'cargo', 'heli', 'upkeep', 'watchWipe', 'trackedOnline', 'trackedOffline', 'decay'].includes(k)
+}]));
+
+const DEFAULT_CONFIG = {
+    port: 3000,
+    // Either a rustplusplus credentials file, or a rustplus.config.json from `npx @liamcottle/rustplus.js fcm-register`.
+    credentialsFile: '',
+    // Which steamId to use when credentialsFile is a rustplusplus file holding several users (defaults to its hoster).
+    steamId: '',
+    poll: { markers: 4000, team: 5000, time: 15000, info: 30000, devices: 60000 },
+    steamApiKey: '',
+    rustMapsKey: '',
+    discordWebhook: '',
+    bot: { enabled: true, prefix: '!' },
+    // Two-way Discord bot (optional): answers commands in one channel. allowSay lets that channel post into team chat.
+    discordBot: { enabled: false, token: '', channelId: '', prefix: '!', allowSay: false },
+    sulfurSaleAlertMin: 1000,
+    upkeepAlertHours: 3,
+    // Decay timers warn this many minutes before the structure falls.
+    decayAlertMinutes: 30,
+    alerts: DEFAULT_ALERTS
+};
+
+const readJson = (file, fallback, { keepBad = false } = {}) => {
+    try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+        // A damaged config/servers file would be overwritten with defaults on the next save; set it aside first.
+        if (keepBad && e.code !== 'ENOENT') {
+            const bad = `${file}.bad-${Date.now()}`;
+            try { fs.renameSync(file, bad); } catch { /* best effort */ }
+            console.error(`${path.basename(file)} could not be read (${e.message}); saved it as ${path.basename(bad)} and started from defaults`);
+        }
+        return fallback;
+    }
+};
+const writeJson = (file, data) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // Write then rename: a crash mid-write must never truncate servers.json or config.json.
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(data, null, 2));
+    fs.renameSync(`${file}.tmp`, file);
+};
+
+if (!fs.existsSync(CONFIG_FILE)) writeJson(CONFIG_FILE, DEFAULT_CONFIG);
+const loaded = readJson(CONFIG_FILE, {}, { keepBad: true });
+const config = {
+    ...DEFAULT_CONFIG, ...loaded,
+    poll: { ...DEFAULT_CONFIG.poll, ...loaded.poll },
+    bot: { ...DEFAULT_CONFIG.bot, ...loaded.bot },
+    discordBot: { ...DEFAULT_CONFIG.discordBot, ...loaded.discordBot },
+    alerts: Object.fromEntries(Object.keys(ALERT_KINDS).map(k => [k, { ...DEFAULT_ALERTS[k], ...loaded.alerts?.[k] }]))
+};
+const saveConfig = () => writeJson(CONFIG_FILE, { ...config, port: loaded.port ?? config.port });
+// PORT / NO_FCM let a second copy run side by side (e.g. for testing) without fighting over the push connection.
+if (process.env.PORT) config.port = Number(process.env.PORT);
+
+const store = readJson(SERVERS_FILE, { active: null, list: {} }, { keepBad: true });
+const saveStore = () => writeJson(SERVERS_FILE, store);
+const threats = new Persisted(path.join(DATA, 'threats.json'), { deaths: [] });
+
+const log = (...args) => console.log(new Date().toISOString().slice(11, 19), ...args);
+const serverDir = id => path.join(DATA, 'servers', id.replace(/[^\w.-]/g, '_'));
+
+// Decoded protobuf messages keep default values (0, false, []) on the prototype, so a plain JSON
+// dump would drop them — e.g. a sold-out order's amountInStock of 0. toObject keeps them and stringifies uint64s.
+const plain = value => value.constructor.toObject(value, { defaults: true, arrays: true, longs: String, enums: Number });
+const errText = e => e?.message || (typeof e === 'object' ? JSON.stringify(e) : String(e));
+
+/* ---------------- browser clients ---------------- */
+
+const app = express();
+const httpServer = http.createServer(app);
+const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+// The http server's own error handler reports a busy port; ws re-emits the same error and would crash without a listener.
+wss.on('error', () => {});
+
+const broadcast = msg => {
+    const text = JSON.stringify(msg);
+    for (const ws of wss.clients) if (ws.readyState === 1) ws.send(text);
+};
+
+/* ---------------- alerts ---------------- */
+
+// Set up further down, once tracking and the session exist.
+let discordBot = null;
+
+const ALERT_COLORS = { teamDeath: 0xd8412f, killedBy: 0xd8412f, alarm: 0xff3b30, teamOnline: 0x7cc043, teamOffline: 0x8d8a85, sulfurSale: 0xf07a2c, upkeep: 0xe4a73a };
+
+function alert(kind, text, extra = {}) {
+    const rule = config.alerts[kind];
+    if (!rule) return;
+    const entry = { kind, label: ALERT_KINDS[kind], text, t: Date.now(), server: session?.server.name, ...extra };
+    broadcast({ type: 'alert', alert: entry, toast: rule.toast });
+    // No webhook but the bot is running: post the alert through the bot instead.
+    if (rule.discord && !config.discordWebhook && discordBot?.user) {
+        discordBot.post({ title: ALERT_KINDS[kind], description: text, color: ALERT_COLORS[kind] ?? 0x3fa9f5, footer: entry.server ? { text: entry.server } : undefined })
+            .catch(e => log('discord bot alert failed:', e.message));
+    }
+    if (rule.discord && config.discordWebhook) {
+        fetch(config.discordWebhook, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: 'RustScout',
+                embeds: [{ title: ALERT_KINDS[kind], description: text, color: ALERT_COLORS[kind] ?? 0x3fa9f5, timestamp: new Date().toISOString(), footer: entry.server ? { text: entry.server } : undefined }]
+            }),
+            signal: AbortSignal.timeout(8000)
+        }).catch(e => log('webhook failed:', e.message));
+    }
+}
+
+/* ---------------- FCM listener: pairing, deaths, alarms ---------------- */
+
+const NOT_LINKED = process.env.DESKTOP ? 'not set up — link your Steam account' : 'not set up — run setup.bat (or npm run register) to link Steam';
+const fcm = { status: NOT_LINKED, client: null };
+
+function loadGcmCredentials() {
+    // `npx rustplus fcm-register` run in this folder writes rustplus.config.json; a fresh one beats an old configured file.
+    const local = CREDS_FILE;
+    const file = fs.existsSync(local) ? local : config.credentialsFile ? path.resolve(ROOT, config.credentialsFile) : null;
+    if (!file) return null;
+    const creds = readJson(file, null);
+    if (!creds) throw new Error(`cannot read ${file}`);
+    const expiry = creds[creds.hoster]?.expire_date;
+    if (expiry && Number(expiry) * 1000 < Date.now()) {
+        throw new Error(`pairing credentials expired ${new Date(Number(expiry) * 1000).toDateString()} — run "npx rustplus fcm-register" in the app folder`);
+    }
+
+    if (creds.fcm_credentials) {
+        const gcm = creds.fcm_credentials.gcm;
+        return { androidId: gcm.androidId ?? gcm.android_id, securityToken: gcm.securityToken ?? gcm.security_token };
+    }
+    const user = creds[config.steamId || creds.hoster];
+    if (!user?.gcm) throw new Error(`no gcm credentials for ${config.steamId || creds.hoster || 'hoster'} in ${file}`);
+    return { androidId: user.gcm.android_id, securityToken: user.gcm.security_token };
+}
+
+function onPush(data) {
+    const get = key => data.appData?.find(i => i.key === key)?.value;
+    const channel = get('channelId');
+    const title = get('title') || '';
+    const message = get('message') || '';
+    let body = {};
+    try { body = JSON.parse(get('body') || '{}'); } catch { /* some pushes have no json body */ }
+    const serverId = body.ip && body.port ? `${body.ip}:${body.port}` : null;
+
+    if (channel === 'pairing' && body.type === 'server') {
+        store.list[serverId] = {
+            id: serverId, name: body.name, ip: body.ip, port: Number(body.port),
+            playerId: String(body.playerId), playerToken: String(body.playerToken),
+            img: body.img, url: body.url, desc: body.desc
+        };
+        log(`paired server ${body.name} (${serverId})`);
+        saveStore();
+        broadcast({ type: 'servers', servers: publicServers() });
+        // You just pressed Pair in game, so that's the server you want to see.
+        activate(serverId);
+        return;
+    }
+
+    if (channel === 'pairing' && body.type === 'entity') {
+        log(`paired ${body.entityName} ${body.entityId} on ${serverId}`);
+        if (session?.server.id === serverId) {
+            session.devices.add(body.entityId, Number(body.entityType), body.entityName);
+            session.refreshDevice(body.entityId).catch(() => {});
+            session.pushDevices();
+        } else {
+            const devices = new Devices(path.join(serverDir(serverId), 'devices.json'));
+            devices.add(body.entityId, Number(body.entityType), body.entityName);
+            devices.store.flush();
+        }
+        return;
+    }
+
+    if (channel === 'player' && body.type === 'death') {
+        const killerName = title.match(/killed by (.+)$/i)?.[1]?.trim() || body.targetName || 'Unknown';
+        threats.data.deaths.push({ t: Date.now(), killerId: body.targetId || '', killerName, server: body.name || null, title });
+        threats.data.deaths = threats.data.deaths.slice(-1000);
+        threats.touch();
+        alert('killedBy', title || `Killed by ${killerName}`, { killerId: body.targetId || null });
+        broadcast({ type: 'threatsChanged' });
+        return;
+    }
+
+    // Alarms on the connected server arrive through Rust+ entity broadcasts instead (with the entity id).
+    if (channel === 'alarm' && serverId !== session?.server.id) {
+        alert('alarm', `${title}${message ? ` — ${message}` : ''}${body.name ? ` (${body.name})` : ''}`);
+    }
+}
+
+async function startFcm() {
+    // Restartable: the desktop app calls this again right after Steam is linked.
+    if (fcm.client) {
+        fcm.client.destroy();
+        fcm.client = null;
+        fcm.status = NOT_LINKED;
+    }
+    if (process.env.NO_FCM) {
+        fcm.status = 'disabled (NO_FCM)';
+        return;
+    }
+    let gcm;
+    try {
+        gcm = loadGcmCredentials();
+    } catch (e) {
+        fcm.status = e.message;
+        log('fcm:', e.message);
+        return;
+    }
+    if (!gcm) return;
+
+    // Pass the ids of pushes we already handled so they aren't redelivered on every start.
+    const seen = new Persisted(path.join(DATA, 'fcm-seen.json'), { ids: [] });
+    // A copy: the client pushes each new id into the array it was given before emitting the message.
+    fcm.client = new PushReceiverClient(gcm.androidId, gcm.securityToken, [...seen.data.ids]);
+    fcm.client.on('ON_DATA_RECEIVED', data => {
+        if (data.persistentId) {
+            if (seen.data.ids.includes(data.persistentId)) return;
+            seen.data.ids = [...seen.data.ids, data.persistentId].slice(-200);
+            seen.flush();
+        }
+        try { onPush(data); } catch (e) { log('push handling failed:', e.message); }
+    });
+    try {
+        await fcm.client.connect();
+        fcm.status = 'listening';
+        log('fcm: listening for pairing, death and alarm notifications');
+    } catch (e) {
+        fcm.status = `failed: ${e.message}`;
+        log('fcm connect failed:', e.message);
+    }
+}
+
+const publicServers = () => ({
+    active: store.active,
+    fcm: fcm.status,
+    list: Object.values(store.list).map(({ playerToken, ...s }) => s)
+});
+
+/* ---------------- Rust+ session ---------------- */
+
+class Session {
+    constructor(server) {
+        this.server = server;
+        this.state = { status: 'connecting', info: null, time: null, markers: [], team: null, mapMeta: null };
+        this.timers = [];
+        this.timeSamples = [];
+        this.chat = [];
+        this.closed = false;
+        const dir = serverDir(server.id);
+        this.tracker = new VendingTracker(path.join(dir, 'vending.json'));
+        this.teamTracker = new TeamTracker(path.join(dir, 'team.json'));
+        this.events = new EventTracker(path.join(dir, 'events.json'));
+        this.pop = new PopTracker(path.join(dir, 'pop.json'));
+        this.devices = new Devices(path.join(dir, 'devices.json'));
+        this.pins = new Pins(path.join(dir, 'pins.json'));
+        // Separate from the poll timers: walls keep decaying while Rust+ is disconnected, so this survives reconnects.
+        this.decayTimer = setInterval(() => this.checkDecay(), 30000);
+        this.upkeepWarned = new Set();
+        this.connect();
+    }
+
+    connect() {
+        const s = this.server;
+        this.rp = new RustPlus(s.ip, s.port, s.playerId, s.playerToken);
+        this.rp.on('connected', () => {
+            clearTimeout(this.connectTimer);
+            this.handshaking = false;
+            this.onConnected().catch(e => this.fail(e));
+        });
+        this.rp.on('disconnected', () => { clearTimeout(this.connectTimer); this.handshaking = false; this.onDisconnected(); });
+        this.rp.on('error', e => log(`rust+ error (${s.name}):`, e.message));
+        this.rp.on('message', msg => {
+            try { this.onBroadcast(msg); } catch (e) { log('broadcast handling failed:', e.message); }
+        });
+        // Once a server has gone quiet, keep saying so through the retries instead of flipping back to "connecting".
+        if (this.state.status !== 'not answering') this.setStatus('connecting');
+        this.handshaking = true;
+        this.rp.connect();
+        // Some servers accept the connection but never finish the Rust+ handshake (overloaded, or firewalled so only
+        // Facepunch's own relay gets through). Without a limit that sits on "connecting" forever.
+        clearTimeout(this.connectTimer);
+        this.connectTimer = setTimeout(() => {
+            if (this.closed || !this.handshaking) return;
+            log(`${s.name}: Rust+ didn't answer within 30s`);
+            this.setStatus('not answering');
+            try { this.rp.disconnect(); } catch { /* already gone */ }
+            this.onDisconnected();
+        }, 30000);
+    }
+
+    setStatus(status) {
+        this.state.status = status;
+        broadcast({ type: 'status', status });
+    }
+
+    request(data) {
+        if (this.closed || !this.rp.websocket) return Promise.reject(new Error('not connected'));
+        return this.rp.sendRequestAsync(data, 15000);
+    }
+
+    async onConnected() {
+        log(`connected to ${this.server.name}`);
+        this.setStatus('loading map');
+        await this.refreshInfo();
+        await this.refreshMap();
+        // The session can be closed (server switched or re-paired) while it was still starting up.
+        if (this.closed) return;
+        this.setStatus('online');
+        await Promise.allSettled([this.refreshMarkers(), this.refreshTeam(), this.refreshTime(), this.loadChat(), this.refreshDevices()]);
+        if (this.closed) return;
+        this.every(config.poll.markers, () => this.refreshMarkers());
+        this.every(config.poll.team, () => this.refreshTeam());
+        this.every(config.poll.time, () => this.refreshTime());
+        this.every(config.poll.info, () => this.refreshInfo());
+        // Entity info also re-subscribes us to entityChanged broadcasts after a server restart.
+        this.every(config.poll.devices, () => this.refreshDevices());
+    }
+
+    every(ms, fn) {
+        this.timers.push(setInterval(() => {
+            if (this.closed) return;
+            fn().catch(e => !this.closed && log('poll failed:', errText(e)));
+        }, ms));
+    }
+
+    clearTimers() {
+        this.timers.forEach(clearInterval);
+        this.timers = [];
+    }
+
+    // Startup failed (often a server still loading after a restart and not answering yet). Don't sit there:
+    // drop the connection so the normal reconnect loop tries again.
+    fail(e) {
+        log(`session error (${this.server.name}):`, errText(e));
+        this.setStatus(`error: ${errText(e)} — retrying`);
+        if (this.closed) return;
+        this.clearTimers();
+        clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => {
+            if (this.closed) return;
+            if (this.rp.websocket) this.rp.disconnect(); // fires 'disconnected' → reconnect in 15s
+            else this.connect();
+        }, 5000);
+    }
+
+    onDisconnected() {
+        this.clearTimers();
+        if (this.closed || this.reconnectPending) return;
+        this.reconnectPending = true;
+        if (this.state.status !== 'not answering') this.setStatus('reconnecting');
+        log(`disconnected from ${this.server.name}, retrying in 15s`);
+        setTimeout(() => { this.reconnectPending = false; if (!this.closed) this.connect(); }, 15000);
+    }
+
+    onBroadcast(msg) {
+        const b = msg.broadcast;
+        if (!b) return;
+        if (b.teamMessage?.message) this.onTeamMessage(plain(b.teamMessage.message));
+        if (b.entityChanged) {
+            const { entityId, payload } = plain(b.entityChanged);
+            const device = this.devices.list[String(entityId)];
+            if (!device) return;
+            if (this.devices.apply(entityId, payload)) alert('alarm', `${device.name} triggered`);
+            this.pushDevices();
+        }
+        if (b.teamChanged) this.refreshTeam().catch(() => {});
+    }
+
+    async refreshInfo() {
+        const { info } = await this.request({ getInfo: {} });
+        this.state.info = plain(info);
+        this.tracker.setWipe(Number(this.state.info.wipeTime));
+        this.pop.add(this.state.info, Date.now());
+        // Imported/manual servers only know their ip:port until the server tells us its name.
+        if (this.server.name === this.server.id && info.name) {
+            this.server.name = info.name;
+            saveStore();
+            broadcast({ type: 'servers', servers: publicServers() });
+        }
+        broadcast({ type: 'info', info: this.state.info });
+    }
+
+    async refreshMap() {
+        const { map } = await this.request({ getMap: {} });
+        const dir = serverDir(this.server.id);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'map.jpg'), map.jpgImage);
+        this.state.mapMeta = {
+            width: map.width, height: map.height, oceanMargin: map.oceanMargin,
+            mapSize: this.state.info.mapSize, background: map.background,
+            seed: this.state.info.seed, custom: !/^procedural map$/i.test(this.state.info.map || ''),
+            monuments: map.monuments.map(m => ({ token: m.token, x: m.x, y: m.y })),
+            version: Date.now()
+        };
+        await this.lookupWorldSeed();
+        broadcast({ type: 'map', mapMeta: this.state.mapMeta });
+    }
+
+    // Rust+'s info.seed doesn't always match the world seed; the server's public query reply (world.seed) does,
+    // and that's the one RustMaps knows the map by.
+    async lookupWorldSeed() {
+        try {
+            const found = await browser.resolve(this.server.ip);
+            const candidates = (await Promise.all(found.map(s => browser.details(s.ip, s.queryPort).catch(() => null))))
+                .filter(d => d?.seed && d.size === this.state.info.mapSize);
+            // One IP can host several servers: prefer the one whose name matches Rust+.
+            let d = candidates.find(c => c.name === this.state.info.name) || (candidates.length === 1 ? candidates[0] : null);
+            // Big hosts put Rust+ on a different IP than the game server; find it by exact name in Steam's list.
+            if (!d && config.steamApiKey) {
+                const cache = await browser.list(config.steamApiKey);
+                const hit = cache.servers.find(s => s.name === this.state.info.name);
+                if (hit) d = await browser.details(hit.ip, hit.queryPort).catch(() => null);
+            }
+            if (d) this.queryAddr = { ip: d.ip, queryPort: d.queryPort, gamePort: d.gamePort, name: d.name };
+            if (d?.seed) {
+                this.state.mapMeta.seed = d.seed;
+                this.state.mapMeta.custom = d.customMap || this.state.mapMeta.custom;
+                this.state.mapMeta.rustMapsId = d.rustMapsId;
+                this.state.mapMeta.levelUrl = d.levelUrl;
+            }
+        } catch { /* keep the Rust+ seed */ }
+    }
+
+    async refreshMarkers() {
+        const { mapMarkers } = await this.request({ getMapMarkers: {} });
+        const now = Date.now();
+        this.state.markers = plain(mapMarkers).markers;
+        const sales = this.tracker.update(this.state.markers, now);
+        broadcast({ type: 'markers', markers: this.state.markers });
+        if (sales.length) {
+            broadcast({ type: 'sales', sales });
+            for (const s of sales) {
+                if (SULFUR.has(s.currencyId) && s.paid >= config.sulfurSaleAlertMin) {
+                    alert('sulfurSale', `${s.name || 'A shop'} just took ${s.paid} sulfur`, { x: s.x, y: s.y });
+                }
+            }
+        }
+        const evs = this.events.update(this.state.markers, now, this.state.mapMeta);
+        for (const e of evs) alert(e.kind, e.text, { x: e.x, y: e.y });
+        broadcast({ type: 'events', events: this.events.snapshot() });
+    }
+
+    async refreshTeam() {
+        const { teamInfo } = await this.request({ getTeamInfo: {} });
+        this.state.team = plain(teamInfo);
+        for (const e of this.teamTracker.update(this.state.team, Date.now(), this.state.mapMeta)) alert(e.kind, e.text, { x: e.x, y: e.y });
+        broadcast({ type: 'team', team: this.state.team, teamLog: this.teamSnapshot() });
+    }
+
+    teamSnapshot() {
+        const d = this.teamTracker.store.data;
+        return { deaths: d.deaths.slice(-100), log: d.log.slice(-100).reverse(), members: d.members };
+    }
+
+    async refreshTime() {
+        const { time } = await this.request({ getTime: {} });
+        const now = Date.now();
+        this.timeSamples.push({ at: now, time: time.time });
+        this.timeSamples = this.timeSamples.filter(s => now - s.at < 120000).slice(-8);
+        this.state.time = { ...plain(time), sampledAt: now, secondsPerHour: this.secondsPerGameHour(time) };
+        broadcast({ type: 'time', time: this.state.time });
+    }
+
+    // Day and night run at different speeds, so measure the live rate instead of trusting dayLengthMinutes.
+    secondsPerGameHour(time) {
+        const [a, b] = [this.timeSamples[0], this.timeSamples[this.timeSamples.length - 1]];
+        let dh = b ? b.time - a.time : 0;
+        if (dh < 0) dh += 24;
+        if (b && dh > 0.01 && b.at - a.at > 10000) return (b.at - a.at) / 1000 / dh;
+        return (time.dayLengthMinutes * 60) / 24;
+    }
+
+    gameTime() {
+        const t = this.state.time;
+        if (!t) return null;
+        const now = (t.time + (Date.now() - t.sampledAt) / 1000 / t.secondsPerHour) % 24;
+        const isDay = now >= t.sunrise && now < t.sunset;
+        let dh = (isDay ? t.sunset : t.sunrise) - now;
+        if (dh < 0) dh += 24;
+        const h = Math.floor(now), m = Math.floor((now - h) * 60);
+        return { clock: `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`, isDay, untilChange: dh * t.secondsPerHour };
+    }
+
+    /* ---- team chat + bot ---- */
+
+    async loadChat() {
+        const { teamChat } = await this.request({ getTeamChat: {} });
+        this.chat = plain(teamChat).messages.slice(-200);
+        broadcast({ type: 'chat', chat: this.chat });
+    }
+
+    async onTeamMessage(m) {
+        this.chat.push(m);
+        this.chat = this.chat.slice(-200);
+        broadcast({ type: 'chatMessage', message: m });
+        if (m.steamId !== this.server.playerId) alert('chat', `${m.name}: ${m.message}`);
+        if (!config.bot.enabled) return;
+        const reply = await chatbot.handle(m.message, config.bot.prefix, this.botContext());
+        if (reply) await this.say(reply);
+    }
+
+    botContext() {
+        return {
+            info: this.state.info, team: this.state.team, markers: this.state.markers, mapMeta: this.state.mapMeta,
+            events: this.events, tracker: this.tracker, devices: this.devices,
+            gameTime: () => this.gameTime(),
+            setSwitch: (id, value) => this.setSwitch(id, value)
+        };
+    }
+
+    async say(text) {
+        // Team chat truncates long messages, so split on word boundaries.
+        const parts = [];
+        let line = '';
+        for (const word of String(text).split(' ')) {
+            if ((line + ' ' + word).trim().length > 120) {
+                parts.push(line.trim());
+                line = '';
+            }
+            line += ' ' + word;
+        }
+        if (line.trim()) parts.push(line.trim());
+        for (const p of parts) await this.request({ sendTeamMessage: { message: p } });
+    }
+
+    /* ---- smart devices ---- */
+
+    async refreshDevice(id) {
+        try {
+            const { entityInfo } = await this.request({ entityId: Number(id), getEntityInfo: {} });
+            this.devices.apply(id, plain(entityInfo).payload);
+        } catch {
+            this.devices.markUnreachable(id);
+        }
+    }
+
+    async refreshDevices() {
+        for (const id of Object.keys(this.devices.list)) await this.refreshDevice(id);
+        this.checkUpkeep();
+        this.pushDevices();
+    }
+
+    checkUpkeep() {
+        const limit = config.upkeepAlertHours * 3600e3;
+        for (const d of Object.values(this.devices.list)) {
+            if (d.type !== 'monitor' || !d.hasProtection) continue;
+            const left = d.protectionExpiry * 1000 - Date.now();
+            if (left < limit && !this.upkeepWarned.has(d.id)) {
+                this.upkeepWarned.add(d.id);
+                alert('upkeep', left <= 0 ? `${d.name} is DECAYING — no upkeep left` : `${d.name} upkeep runs out in ${Math.round(left / 60000)} minutes`);
+            } else if (left >= limit) {
+                this.upkeepWarned.delete(d.id);
+            }
+        }
+    }
+
+    checkDecay() {
+        const due = this.pins.due(config.decayAlertMinutes * 60e3);
+        for (const p of due) {
+            const left = p.end - Date.now();
+            const where = Number.isFinite(p.x) && this.state.mapMeta ? ` at ${geo.gridOf(p.x, p.y, this.state.mapMeta.mapSize)}` : '';
+            alert('decay', `${p.label || p.name}${where} ${left > 0 ? `falls in ${Math.round(left / 60000)} minutes` : 'has decayed'}`);
+        }
+        if (due.length) this.pushPins();
+    }
+
+    pushPins() {
+        broadcast({ type: 'pins', pins: this.pins.list });
+    }
+
+    async setSwitch(id, value) {
+        await this.request({ entityId: Number(id), setEntityValue: { value: !!value } });
+        await this.refreshDevice(id);
+        this.pushDevices();
+    }
+
+    pushDevices() {
+        broadcast({ type: 'devices', devices: Object.values(this.devices.list) });
+    }
+
+    snapshot() {
+        return {
+            server: { id: this.server.id, name: this.server.name, playerId: this.server.playerId },
+            ...this.state,
+            chat: this.chat,
+            events: this.events.snapshot(),
+            teamLog: this.teamSnapshot(),
+            devices: Object.values(this.devices.list),
+            pins: this.pins.list
+        };
+    }
+
+    close() {
+        this.closed = true;
+        this.clearTimers();
+        clearTimeout(this.retryTimer);
+        clearTimeout(this.connectTimer);
+        clearInterval(this.decayTimer);
+        this.tracker.close();
+        for (const p of [this.teamTracker.store, this.events.store, this.pop.store, this.devices.store, this.pins.store]) p.flush();
+        try { this.rp.disconnect(); } catch { /* already gone */ }
+    }
+}
+
+let session = null;
+
+function activate(id) {
+    if (!store.list[id]) return false;
+    // Re-pairing the server we're already connected to (same token) needs no reconnect.
+    if (session && session.server.id === id && session.server.playerToken === store.list[id].playerToken && !session.closed) {
+        session.server = store.list[id];
+        broadcast({ type: 'servers', servers: publicServers() });
+        return true;
+    }
+    session?.close();
+    store.active = id;
+    saveStore();
+    session = new Session(store.list[id]);
+    broadcast({ type: 'reset', snapshot: session.snapshot() });
+    broadcast({ type: 'servers', servers: publicServers() });
+    return true;
+}
+
+/* ---------------- HTTP API ---------------- */
+
+app.use(express.json());
+app.use(express.static(path.join(ROOT, 'public')));
+app.use('/vendor/leaflet', express.static(path.join(ROOT, 'node_modules', 'leaflet', 'dist')));
+for (const f of ['items.json', 'raid.json', 'game.json', 'ores.json']) app.get(`/data/${f}`, (req, res) => res.sendFile(path.join(STATIC, f)));
+
+const needSession = (req, res, next) => session ? next() : res.status(409).json({ error: 'No server connected' });
+const guard = fn => async (req, res) => {
+    try { await fn(req, res); } catch (e) { res.status(500).json({ error: errText(e) }); }
+};
+
+app.get('/api/map.jpg', (req, res) => {
+    if (!session) return res.sendStatus(404);
+    const file = path.join(serverDir(session.server.id), 'map.jpg');
+    fs.existsSync(file) ? res.sendFile(file) : res.sendStatus(404);
+});
+
+app.get('/api/servers', (req, res) => res.json(publicServers()));
+
+app.post('/api/servers', (req, res) => {
+    const { name, ip, port, playerId, playerToken } = req.body || {};
+    if (!ip || !port || !playerId || !playerToken) return res.status(400).json({ error: 'ip, port, playerId and playerToken are required' });
+    const id = `${ip}:${port}`;
+    store.list[id] = { id, name: name || id, ip, port: Number(port), playerId: String(playerId), playerToken: String(playerToken) };
+    saveStore();
+    activate(id);
+    res.json(publicServers());
+});
+
+app.post('/api/servers/:id/activate', (req, res) =>
+    activate(req.params.id) ? res.json(publicServers()) : res.sendStatus(404));
+
+app.delete('/api/servers/:id', (req, res) => {
+    const id = req.params.id;
+    if (store.active === id) {
+        session?.close();
+        session = null;
+        store.active = null;
+        broadcast({ type: 'reset', snapshot: null });
+    }
+    delete store.list[id];
+    saveStore();
+    res.json(publicServers());
+});
+
+app.get('/api/targets', (req, res) => res.json(session ? session.tracker.targets(Number(req.query.hours ?? 6)) : []));
+app.get('/api/sales', (req, res) => res.json(session ? session.tracker.recentSales(Number(req.query.limit ?? 100)) : []));
+app.get('/api/pop', (req, res) => res.json(session ? session.pop.store.data.samples : []));
+
+app.post('/api/chat', needSession, guard(async (req, res) => {
+    const message = String(req.body?.message || '').trim();
+    if (!message) return res.status(400).json({ error: 'empty message' });
+    await session.say(message);
+    res.json({ ok: true });
+}));
+
+app.post('/api/devices/:id/value', needSession, guard(async (req, res) => {
+    await session.setSwitch(req.params.id, req.body?.value);
+    res.json({ ok: true });
+}));
+app.post('/api/devices/refresh', needSession, guard(async (req, res) => {
+    await session.refreshDevices();
+    res.json({ ok: true });
+}));
+app.post('/api/devices', needSession, guard(async (req, res) => {
+    const { entityId, type, name } = req.body || {};
+    if (!/^\d+$/.test(String(entityId))) return res.status(400).json({ error: 'entityId must be a number' });
+    session.devices.add(entityId, { switch: 1, alarm: 2, monitor: 3 }[type] || 1, name);
+    await session.refreshDevice(entityId);
+    session.pushDevices();
+    res.json({ ok: true });
+}));
+app.put('/api/devices/:id', needSession, (req, res) => {
+    session.devices.rename(req.params.id, req.body?.name || 'Device');
+    session.pushDevices();
+    res.json({ ok: true });
+});
+app.delete('/api/devices/:id', needSession, (req, res) => {
+    session.devices.remove(req.params.id);
+    session.pushDevices();
+    res.json({ ok: true });
+});
+
+const decayTable = () => require(path.join(STATIC, 'game.json')).decay;
+const pinRoute = fn => (req, res) => {
+    try {
+        res.json(fn(req));
+        session.pushPins();
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+};
+app.get('/api/pins', needSession, (req, res) => res.json(session.pins.list));
+app.post('/api/pins', needSession, pinRoute(req => session.pins.add(req.body || {}, decayTable())));
+app.put('/api/pins/:id', needSession, pinRoute(req => session.pins.update(req.params.id, req.body || {}, decayTable())));
+app.delete('/api/pins/:id', needSession, pinRoute(req => { session.pins.remove(req.params.id); return { ok: true }; }));
+
+app.get('/api/threats', guard(async (req, res) => {
+    const byKiller = {};
+    for (const d of threats.data.deaths) {
+        const key = d.killerId || `npc:${d.killerName}`;
+        const k = byKiller[key] ??= { killerId: d.killerId, name: d.killerName, kills: 0, last: 0, first: d.t, servers: new Set() };
+        k.kills++;
+        k.last = Math.max(k.last, d.t);
+        k.name = d.killerName;
+        if (d.server) k.servers.add(d.server);
+    }
+    const list = Object.values(byKiller).sort((a, b) => b.kills - a.kills || b.last - a.last).slice(0, 50);
+    await Promise.all(list.map(async k => {
+        k.servers = [...k.servers];
+        if (k.killerId) k.profile = await steam.profile(k.killerId, config.steamApiKey);
+    }));
+    res.json({ killers: list, recent: threats.data.deaths.slice(-50).reverse(), apiKey: !!config.steamApiKey });
+}));
+
+/* ---------------- server browser + watch list ---------------- */
+
+const watch = new Persisted(path.join(DATA, 'watch.json'), { list: {}, pop: {} });
+
+// A paired server shares the IP of its browser entry (ports differ: app port vs game/query port).
+const pairedFor = ip => Object.values(store.list).find(s => s.ip === ip)?.id ?? null;
+
+async function pollWatched() {
+    for (const w of Object.values(watch.data.list)) {
+        try {
+            const d = await browser.details(w.ip, w.queryPort);
+            const samples = watch.data.pop[w.id] ??= [];
+            samples.push([Date.now(), d.players, d.queued, d.maxPlayers]);
+            while (samples.length > 7 * 24 * 20) samples.shift(); // ~7 days at 3-minute polls
+            if (w.wipe && d.wipe && d.wipe !== w.wipe) alert('watchWipe', `${d.name} just wiped (${d.players}/${d.maxPlayers} on)`);
+            Object.assign(w, { name: d.name, wipe: d.wipe, players: d.players, maxPlayers: d.maxPlayers, queued: d.queued, online: true, checked: Date.now() });
+        } catch {
+            w.online = false;
+            w.checked = Date.now();
+        }
+    }
+    watch.touch();
+    broadcast({ type: 'watch' });
+}
+setInterval(pollWatched, 3 * 60e3);
+
+const withPaired = s => ({ ...s, paired: pairedFor(s.ip), watched: !!watch.data.list[s.id] });
+
+app.get('/api/browse/list', guard(async (req, res) => {
+    const q = req.query;
+    let cache;
+    try {
+        cache = await browser.list(config.steamApiKey);
+    } catch (e) {
+        return res.status(400).json({ error: e.message, needsKey: !config.steamApiKey });
+    }
+    const result = browser.search(cache.servers, {
+        q: String(q.q || ''), region: String(q.region || ''), flag: String(q.flag || ''),
+        minPlayers: Number(q.minPlayers) || 0, sort: String(q.sort || 'players'),
+        offset: Number(q.offset) || 0, limit: Math.min(200, Number(q.limit) || 100)
+    });
+    res.json({ ...result, servers: result.servers.map(withPaired), cachedAt: cache.at, count: cache.servers.length });
+}));
+
+app.get('/api/browse/lookup', guard(async (req, res) => {
+    const found = await browser.resolve(String(req.query.addr || ''));
+    const out = await Promise.all(found.map(s => browser.details(s.ip, s.queryPort).catch(() => null)));
+    res.json(out.filter(Boolean).map(withPaired));
+}));
+
+app.get('/api/browse/details', guard(async (req, res) => {
+    const d = await browser.details(String(req.query.ip), Number(req.query.port));
+    res.json({ ...withPaired(d), pop: watch.data.pop[d.id] || [] });
+}));
+
+app.get('/api/watch', (req, res) => res.json(Object.values(watch.data.list).map(w => ({ ...w, paired: pairedFor(w.ip), pop: (watch.data.pop[w.id] || []).slice(-120) }))));
+
+app.post('/api/watch', guard(async (req, res) => {
+    const { ip, queryPort } = req.body || {};
+    const d = await browser.details(String(ip), Number(queryPort));
+    watch.data.list[d.id] = { id: d.id, ip: d.ip, queryPort: d.queryPort, gamePort: d.gamePort, name: d.name, wipe: d.wipe, players: d.players, maxPlayers: d.maxPlayers, queued: d.queued, online: true, checked: Date.now(), added: Date.now() };
+    (watch.data.pop[d.id] ??= []).push([Date.now(), d.players, d.queued, d.maxPlayers]);
+    watch.touch();
+    res.json({ ok: true });
+}));
+
+app.delete('/api/watch/:id', (req, res) => {
+    delete watch.data.list[req.params.id];
+    delete watch.data.pop[req.params.id];
+    watch.touch();
+    res.json({ ok: true });
+});
+
+app.get('/api/rustmaps', guard(async (req, res) => {
+    const size = Number(req.query.size), seed = Number(req.query.seed), id = String(req.query.id || '');
+    if (!id && (!size || !Number.isFinite(seed))) return res.status(400).json({ error: 'id, or size and seed, required' });
+    const dir = path.join(DATA, 'rustmaps');
+    try {
+        res.json(id ? await rustmaps.lookupById(config.rustMapsKey, id, dir) : await rustmaps.lookup(config.rustMapsKey, size, seed, dir));
+    } catch (e) {
+        res.json({ ready: false, state: 'error', error: e.message });
+    }
+}));
+
+// Biome + topology grid from the server's own .map file, for spawn-zone filters.
+// A server's published map URL, or a map file opened from disk ("mapfile:<hash>").
+const mapSource = url => /^https:\/\/[^\s?#]+\.map(\?[^\s#]*)?$/i.test(url) || terrain.FILE_KEY.test(url);
+const MAPFILES = () => path.join(DATA, 'terrain');
+
+// Open a .map file from disk: the page posts the raw bytes; the file name comes in a header.
+app.post('/api/mapfile', express.raw({ type: '*/*', limit: '400mb' }), guard(async (req, res) => {
+    const name = decodeURIComponent(String(req.get('x-file-name') || 'map'));
+    res.json(await terrain.loadFile(req.body, MAPFILES(), gameTables(), name));
+}));
+app.get('/api/mapfiles', (req, res) => res.json(terrain.listFiles(MAPFILES()).map(({ monuments, ...m }) => ({ ...m, monumentCount: monuments.length }))));
+app.get('/api/mapfile/:id', (req, res) => {
+    const m = terrain.listFiles(MAPFILES()).find(x => x.id === req.params.id);
+    m ? res.json(m) : res.status(404).json({ error: 'not found' });
+});
+app.get('/api/mapfile/:id/preview.png', (req, res) => {
+    if (!/^[0-9a-f]{40}$/.test(req.params.id)) return res.sendStatus(400);
+    const file = path.join(MAPFILES(), `${req.params.id}.preview.png`);
+    fs.existsSync(file) ? res.type('png').set('Cache-Control', 'max-age=31536000, immutable').sendFile(file) : res.sendStatus(404);
+});
+app.delete('/api/mapfile/:id', (req, res) => { terrain.removeFile(MAPFILES(), req.params.id); res.json({ ok: true }); });
+
+app.get('/api/terrain', guard(async (req, res) => {
+    const url = String(req.query.url || '');
+    if (!mapSource(url)) return res.status(400).json({ error: 'not a map file URL' });
+    const { grid } = await terrain.load(url, path.join(DATA, 'terrain'), gameTables());
+    res.type('application/octet-stream').send(grid);
+}));
+
+// Exact facility positions (recyclers, research tables, refineries, turrets, SAMs, card readers…) for a map file.
+app.get('/api/facilities', guard(async (req, res) => {
+    const url = String(req.query.url || '');
+    if (!mapSource(url)) return res.status(400).json({ error: 'not a map file URL' });
+    const { facilities } = await terrain.load(url, path.join(DATA, 'terrain'), gameTables());
+    res.json(facilities);
+}));
+
+/* ---- tracked groups ---- */
+const tracking = new Tracking(path.join(DATA, 'tracked.json'), {
+    alert: (kind, text) => alert(kind, text),
+    getServer: () => session?.queryAddr || null,
+    getKey: () => config.steamApiKey
+});
+
+/* ---------------- Discord bot ---------------- */
+
+const DISCORD_EXTRA = { status: 'server + connection', timers: 'your decay timers', tracked: 'tracked players', say: 'post to team chat (if allowed)' };
+async function discordCommand(cmd, args, msg) {
+    const p = config.discordBot.prefix;
+    if (cmd === 'help') {
+        return `**Commands** (prefix \`${p}\`)\n${chatbot.COMMANDS.filter(c => c !== 'help').map(c => `\`${c}\``).join(' ')}\n`
+            + Object.entries(DISCORD_EXTRA).map(([c, d]) => `\`${c}\` ${d}`).join(' · ');
+    }
+    if (cmd === 'tracked') {
+        const snap = await tracking.snapshot();
+        const lines = snap.groups.flatMap(g => g.members.map(m =>
+            `${m.state === 'here' ? '🟢' : m.state === 'rust' ? '🟡' : m.state === 'online' ? '🔵' : '⚫'} **${m.name}** (${g.name}) — ${m.stateLabel}${m.rustHours ? ` · ${m.rustHours}h Rust` : ''}`));
+        return lines.length ? { title: 'Tracked players', description: lines.join('\n'), color: 0x3fa9f5 } : 'Nobody tracked yet — add players in the Tracked tab.';
+    }
+    if (!session) return 'No Rust server connected right now.';
+    if (cmd === 'status') {
+        const i = session.state.info;
+        return `**${session.server.name}** — ${session.state.status}${i ? ` · ${i.players}/${i.maxPlayers} players${i.queuedPlayers ? ` (+${i.queuedPlayers})` : ''}` : ''}`;
+    }
+    if (cmd === 'timers') {
+        const size = session.state.mapMeta?.mapSize;
+        const list = session.pins.list.filter(x => x.kind === 'decay').sort((a, b) => a.end - b.end);
+        if (!list.length) return 'No decay timers running.';
+        return { title: 'Decay timers', color: 0xe4a73a, description: list.map(x => {
+            const left = x.end - Date.now();
+            const where = Number.isFinite(x.x) && size ? ` (${geo.gridOf(x.x, x.y, size)})` : '';
+            return `**${x.label || x.name}**${where} — ${left > 0 ? `falls <t:${Math.round(x.end / 1000)}:R>` : 'decayed'}`;
+        }).join('\n') };
+    }
+    if (cmd === 'say') {
+        if (!config.discordBot.allowSay) return 'Posting to team chat from Discord is switched off in Settings.';
+        const text = args.join(' ').trim();
+        if (!text) return `Usage: ${p}say <message>`;
+        await session.say(`[${msg.author.global_name || msg.author.username}] ${text}`);
+        return 'Sent to team chat.';
+    }
+    return chatbot.handle(`${p}${cmd} ${args.join(' ')}`.trim(), p, session.botContext());
+}
+
+function startDiscordBot() {
+    discordBot?.stop();
+    discordBot = null;
+    const c = config.discordBot;
+    if (!c.enabled) return;
+    discordBot = new DiscordBot({ token: c.token, channelId: c.channelId, prefix: c.prefix, onCommand: discordCommand, log });
+    discordBot.start();
+}
+startDiscordBot();
+app.get('/api/tracked', guard(async (req, res) => res.json(await tracking.snapshot())));
+app.post('/api/tracked/refresh', guard(async (req, res) => { await tracking.poll(); res.json(await tracking.snapshot()); }));
+app.post('/api/tracked/groups', guard(async (req, res) => res.json(await tracking.addGroup(req.body?.name))));
+app.delete('/api/tracked/groups/:id', (req, res) => { tracking.removeGroup(req.params.id); res.json({ ok: true }); });
+app.post('/api/tracked/groups/:id/members', async (req, res) => {
+    try {
+        res.json(await tracking.addMember(req.params.id, req.body?.input));
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+app.delete('/api/tracked/groups/:id/members/:key', (req, res) => { tracking.removeMember(req.params.id, req.params.key); res.json({ ok: true }); });
+
+let tablesCache = null;
+function gameTables() {
+    return tablesCache ??= {
+        ores: readJson(path.join(STATIC, 'ores.json'), null),
+        spawns: readJson(path.join(STATIC, 'spawns.json'), null),
+        facilities: readJson(path.join(STATIC, 'facilities.json'), null),
+        monuments: readJson(path.join(STATIC, 'monuments.json'), null)
+    };
+}
+
+// RustMaps' CDN sends no CORS headers, so heat tiles are relayed (and cached) here for the canvas heatmap.
+app.get('/api/rmtile', guard(async (req, res) => {
+    const url = String(req.query.u || '');
+    if (!/^https:\/\/content\.rustmaps\.com\/maps\/\d+\/[0-9a-f]{32}\/[a-z0-9]+\/tiles\/-?\d+\/-?\d+\/-?\d+\.png$/i.test(url)) {
+        return res.status(400).json({ error: 'not a RustMaps heat tile' });
+    }
+    const file = path.join(DATA, 'rustmaps', 'tiles', url.replace(/^https:\/\//, '').replace(/[^\w.-]/g, '_'));
+    if (!fs.existsSync(file)) {
+        const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+        if (!r.ok) return res.sendStatus(r.status);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, Buffer.from(await r.arrayBuffer()));
+    }
+    res.type('image/webp').sendFile(file);
+}));
+
+app.get('/api/settings', (req, res) => res.json({
+    discordWebhook: config.discordWebhook ? '(set)' : '',
+    steamApiKey: config.steamApiKey ? '(set)' : '',
+    rustMapsKey: config.rustMapsKey ? '(set)' : '',
+    bot: config.bot, alerts: config.alerts, alertKinds: ALERT_KINDS,
+    discordBot: { ...config.discordBot, token: config.discordBot.token ? '(set)' : '' },
+    discordBotStatus: discordBot?.status ?? 'off',
+    sulfurSaleAlertMin: config.sulfurSaleAlertMin, upkeepAlertHours: config.upkeepAlertHours, decayAlertMinutes: config.decayAlertMinutes,
+    commands: chatbot.COMMANDS
+}));
+
+app.put('/api/settings', (req, res) => {
+    const b = req.body || {};
+    // Validate everything before changing anything, so a rejected save leaves the config untouched.
+    if (b.discordBot?.channelId && !/^\d{15,25}$/.test(String(b.discordBot.channelId).trim())) {
+        return res.status(400).json({ error: 'Channel ID should be a long number (right-click the channel → Copy Channel ID)' });
+    }
+    // '(set)' is the masked value we handed out; only overwrite secrets when a real value comes back.
+    if (typeof b.discordWebhook === 'string' && b.discordWebhook !== '(set)') {
+        if (b.discordWebhook && !/^https:\/\/(\w+\.)?discord(app)?\.com\/api\/webhooks\//.test(b.discordWebhook)) {
+            return res.status(400).json({ error: 'That is not a Discord webhook URL' });
+        }
+        config.discordWebhook = b.discordWebhook;
+    }
+    if (typeof b.steamApiKey === 'string' && b.steamApiKey !== '(set)') config.steamApiKey = b.steamApiKey.trim();
+    if (typeof b.rustMapsKey === 'string' && b.rustMapsKey !== '(set)') config.rustMapsKey = b.rustMapsKey.trim();
+    if (b.bot) config.bot = { enabled: !!b.bot.enabled, prefix: String(b.bot.prefix || '!').slice(0, 3) };
+    if (b.discordBot) {
+        const d = b.discordBot, cur = config.discordBot;
+        const before = JSON.stringify(cur);
+        config.discordBot = {
+            enabled: !!d.enabled,
+            token: typeof d.token === 'string' && d.token !== '(set)' ? d.token.trim() : cur.token,
+            channelId: String(d.channelId ?? cur.channelId).trim(),
+            prefix: String(d.prefix || '!').slice(0, 3),
+            allowSay: !!d.allowSay
+        };
+        // Only log the bot in again when something about it changed.
+        if (JSON.stringify(config.discordBot) !== before || (config.discordBot.enabled && !discordBot)) startDiscordBot();
+    }
+    if (b.alerts) for (const k of Object.keys(ALERT_KINDS)) if (b.alerts[k]) config.alerts[k] = { toast: !!b.alerts[k].toast, discord: !!b.alerts[k].discord };
+    // Blank fields mean "leave it", not 0 (+'' is 0).
+    const num = v => v !== '' && v !== null && v !== undefined && Number.isFinite(+v) && +v >= 0 ? +v : null;
+    if (num(b.sulfurSaleAlertMin) !== null) config.sulfurSaleAlertMin = num(b.sulfurSaleAlertMin);
+    if (num(b.upkeepAlertHours) !== null) config.upkeepAlertHours = num(b.upkeepAlertHours);
+    if (num(b.decayAlertMinutes) > 0) config.decayAlertMinutes = num(b.decayAlertMinutes);
+    saveConfig();
+    res.json({ ok: true });
+});
+
+app.post('/api/settings/test-webhook', guard(async (req, res) => {
+    if (!config.discordWebhook) return res.status(400).json({ error: 'No webhook set' });
+    const r = await fetch(config.discordWebhook, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'RustScout', content: 'Webhook connected. Alerts will land here.' })
+    });
+    r.ok ? res.json({ ok: true }) : res.status(400).json({ error: `Discord answered ${r.status}` });
+}));
+
+wss.on('connection', ws => {
+    ws.send(JSON.stringify({ type: 'servers', servers: publicServers() }));
+    ws.send(JSON.stringify({ type: 'reset', snapshot: session?.snapshot() ?? null }));
+});
+
+httpServer.on('error', e => {
+    if (e.code !== 'EADDRINUSE') throw e;
+    log(`Port ${config.port} is busy — RustScout is probably already running (maybe in the background). Open http://localhost:${config.port}`);
+    process.exit(1);
+});
+let markListening;
+const listening = new Promise(resolve => { markListening = resolve; });
+httpServer.listen(config.port, '127.0.0.1', () => {
+    log(`RustScout running at http://localhost:${config.port}`);
+    // stop.bat uses this to stop a background copy (and only this copy). The desktop app has its own lifecycle.
+    if (!process.env.DESKTOP) fs.writeFileSync(PID_FILE, String(process.pid));
+    markListening(config.port);
+    startFcm();
+    pollWatched();
+    if (store.active && store.list[store.active]) activate(store.active);
+});
+
+// Running 24/7: a stray failed promise should be logged, not take the whole app down.
+process.on('unhandledRejection', e => log('unhandled error:', e?.message || e));
+
+const PID_FILE = path.join(DATA, 'app.pid');
+process.on('exit', () => { try { if (fs.readFileSync(PID_FILE, 'utf8') === String(process.pid)) fs.unlinkSync(PID_FILE); } catch { /* none */ } });
+
+// Save everything and disconnect (the desktop app calls this before it quits).
+const stop = () => {
+    discordBot?.stop();
+    fcm.client?.destroy();
+    session?.close();
+    threats.flush();
+    watch.flush();
+    tracking.close();
+};
+const shutdown = () => {
+    stop();
+    process.exit(0);
+};
+// SIGHUP: the console window was closed (Windows); SIGBREAK: Ctrl+Break.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) process.on(sig, shutdown);
+
+// Used by the desktop app (desktop/main.js), which runs this server inside Electron.
+module.exports = { listening, startFcm, stop, credsFile: CREDS_FILE, fcmStatus: () => fcm.status };

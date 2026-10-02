@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>RustScout overlay</title>
+<style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; font: 600 13px/1.35 "Segoe UI", system-ui, sans-serif; color: #ece7df; }
+    canvas { position: fixed; inset: 0; }
+    #hud { position: fixed; min-width: 190px; max-width: 280px; padding: 8px 10px; border-radius: 6px; background: rgba(12, 12, 14, .62);
+        border: 1px solid rgba(255, 255, 255, .08); text-shadow: 0 1px 2px #000; display: none; }
+    #hud.on { display: block; }
+    #hud.top-left { top: 14px; left: 14px; } #hud.top-right { top: 14px; right: 14px; }
+    #hud.bottom-left { bottom: 14px; left: 14px; } #hud.bottom-right { bottom: 90px; right: 14px; }
+    .row { display: flex; justify-content: space-between; gap: 10px; white-space: nowrap; }
+    .muted { color: #a29d96; font-weight: 500; }
+    .warn { color: #f0b23c; } .bad { color: #ff6a4d; } .ok { color: #8fd45a; }
+    .name { font-size: 11px; color: #a29d96; overflow: hidden; text-overflow: ellipsis; }
+    .alert { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, .1); font-size: 12px; transition: opacity .6s; }
+    .alert b { color: #ff7a2f; }
+</style>
+</head>
+<body>
+<canvas id="cross"></canvas>
+<div id="hud"></div>
+<script src="/js/crosshair.js"></script>
+<script>
+'use strict';
+// In-game overlay: a click-through, always-on-top window over the game. Shows a custom crosshair and a small HUD.
+const S = { settings: { hud: false, hudCorner: 'top-right', crosshair: {} }, info: null, time: null, pins: [], status: null, alerts: [] };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dur = ms => {
+    const s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+    return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
+};
+
+function drawCross() {
+    const cv = document.getElementById('cross'), dpr = window.devicePixelRatio || 1;
+    cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+    cv.style.width = innerWidth + 'px'; cv.style.height = innerHeight + 'px';
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    const c = S.settings.crosshair || {};
+    // The app sends the monitor's true centre in this window's coordinates (Windows may shrink the window around the taskbar).
+    const ctr = S.settings.center || { x: innerWidth / 2, y: innerHeight / 2 };
+    if (c.on) drawCrosshair(ctx, Math.round(ctr.x), Math.round(ctr.y), c);
+}
+
+function clock() {
+    const t = S.time;
+    if (!t) return null;
+    const perHour = t.secondsPerHour || 150;
+    const now = (t.time + (Date.now() - t.sampledAt) / 1000 / perHour) % 24;
+    const isDay = now >= t.sunrise && now < t.sunset;
+    let dh = (isDay ? t.sunset : t.sunrise) - now;
+    if (dh < 0) dh += 24;
+    const h = Math.floor(now), m = Math.floor((now - h) * 60);
+    return { isDay, until: dh * perHour * 1000, text: `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}` };
+}
+
+function drawHud() {
+    const el = document.getElementById('hud');
+    el.className = `${S.settings.hud ? 'on' : ''} ${S.settings.hudCorner || 'top-right'}`;
+    if (!S.settings.hud) return;
+    const rows = [];
+    if (S.info) {
+        rows.push(`<div class="name">${esc(S.info.name)}</div>`);
+        rows.push(`<div class="row"><span class="muted">Pop</span><span>${S.info.players}/${S.info.maxPlayers}${S.info.queuedPlayers ? ` <span class="warn">+${S.info.queuedPlayers}</span>` : ''}</span></div>`);
+    } else rows.push(`<div class="name">${S.status ? esc(S.status) : 'No server connected'}</div>`);
+    const c = clock();
+    if (c) rows.push(`<div class="row"><span>${c.isDay ? '☀' : '🌙'} ${c.text}</span><span class="${c.isDay && c.until < 120e3 ? 'warn' : 'muted'}">${c.isDay ? 'night' : 'day'} in ${dur(c.until)}</span></div>`);
+    const decay = S.pins.filter(p => p.kind === 'decay').sort((a, b) => a.end - b.end)[0];
+    if (decay) {
+        const left = decay.end - Date.now();
+        rows.push(`<div class="row"><span class="muted">⏳ ${esc(decay.label || decay.name)}</span><span class="${left < 1800e3 ? 'bad' : ''}">${left > 0 ? dur(left) : 'GONE'}</span></div>`);
+    }
+    const fresh = S.alerts.filter(a => Date.now() - a.shown < 15000).slice(0, 3);
+    for (const a of fresh) rows.push(`<div class="alert" style="opacity:${Date.now() - a.shown > 12000 ? 0.3 : 1}"><b>${esc(a.label || a.kind)}</b> ${esc(a.text)}</div>`);
+    el.innerHTML = rows.join('');
+}
+
+function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = ev => {
+        const m = JSON.parse(ev.data);
+        if (m.type === 'reset') {
+            const s = m.snapshot;
+            Object.assign(S, { info: s?.info ?? null, time: s?.time ?? null, pins: s?.pins ?? [], status: s?.status ?? null });
+        } else if (m.type === 'info') S.info = m.info;
+        else if (m.type === 'time') S.time = m.time;
+        else if (m.type === 'pins') S.pins = m.pins;
+        else if (m.type === 'status') S.status = m.status;
+        else if (m.type === 'alert' && m.toast) S.alerts.unshift({ ...m.alert, shown: Date.now() });
+        drawHud();
+    };
+    ws.onclose = () => setTimeout(connect, 3000);
+}
+
+function apply(settings) {
+    S.settings = settings;
+    drawCross();
+    drawHud();
+}
+// The app pushes settings (with the screen centre) as soon as this window has loaded, and on every change.
+window.desktop?.onOverlay(apply);
+addEventListener('resize', drawCross);
+setInterval(drawHud, 1000);
+connect();
+</script>
+</body>
+</html>

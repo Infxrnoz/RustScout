@@ -1,0 +1,1195 @@
+{
+ "tools": {
+  "rocket": {
+   "id": "-742865266",
+   "name": "Rocket",
+   "shortname": "ammo.rocket.basic",
+   "sulfur": 1400
+  },
+  "c4": {
+   "id": "1248356124",
+   "name": "Timed Explosive Charge",
+   "shortname": "explosive.timed",
+   "sulfur": 2200
+  },
+  "satchel": {
+   "id": "-1878475007",
+   "name": "Satchel Charge",
+   "shortname": "explosive.satchel",
+   "sulfur": 480
+  },
+  "explo": {
+   "id": "-1321651331",
+   "name": "Explosive 5.56 Rifle Ammo",
+   "shortname": "ammo.rifle.explosive",
+   "sulfur": 25
+  },
+  "beancan": {
+   "id": "1840822026",
+   "name": "Beancan Grenade",
+   "shortname": "grenade.beancan",
+   "sulfur": 120
+  },
+  "hv": {
+   "id": "-1841918730",
+   "name": "High Velocity Rocket",
+   "shortname": "ammo.rocket.hv",
+   "sulfur": 200
+  },
+  "f1": {
+   "id": "143803535",
+   "name": "F1 Grenade",
+   "shortname": "grenade.f1",
+   "sulfur": 60
+  }
+ },
+ "targets": [
+  {
+   "key": "wooden-wall",
+   "name": "Wooden Wall",
+   "category": "Building",
+   "shortname": null,
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 2,
+     "time": 6
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 3,
+     "time": 12
+    },
+    "explo": {
+     "qty": 49,
+     "time": 21.075
+    },
+    "beancan": {
+     "qty": 13,
+     "time": 51.375
+    },
+    "hv": {
+     "qty": 9,
+     "time": 48
+    },
+    "f1": {
+     "qty": 59,
+     "time": 149.25
+    }
+   }
+  },
+  {
+   "key": "stone-wall",
+   "name": "Stone Wall",
+   "category": "Building",
+   "shortname": null,
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 10,
+     "time": 22.5
+    },
+    "explo": {
+     "qty": 185,
+     "time": 78.675
+    },
+    "beancan": {
+     "qty": 46,
+     "time": 175.125
+    },
+    "hv": {
+     "qty": 32,
+     "time": 186
+    },
+    "f1": {
+     "qty": 182,
+     "time": 456.75
+    }
+   }
+  },
+  {
+   "key": "sheet-metal-wall",
+   "name": "Sheet Metal Wall",
+   "category": "Building",
+   "shortname": null,
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 8,
+     "time": 42
+    },
+    "c4": {
+     "qty": 4,
+     "time": 14.5
+    },
+    "satchel": {
+     "qty": 23,
+     "time": 42
+    },
+    "explo": {
+     "qty": 400,
+     "time": 171.225
+    },
+    "beancan": {
+     "qty": 112,
+     "time": 422.625
+    },
+    "hv": {
+     "qty": 67,
+     "time": 396
+    },
+    "f1": {
+     "qty": 993,
+     "time": 2484.25
+    }
+   }
+  },
+  {
+   "key": "armored-wall",
+   "name": "Armored Wall",
+   "category": "Building",
+   "shortname": null,
+   "armored": true,
+   "costs": {
+    "rocket": {
+     "qty": 15,
+     "time": 84
+    },
+    "c4": {
+     "qty": 8,
+     "time": 20.5
+    },
+    "satchel": {
+     "qty": 46,
+     "time": 76.5
+    },
+    "explo": {
+     "qty": 799,
+     "time": 346.675
+    },
+    "beancan": {
+     "qty": 223,
+     "time": 838.875
+    },
+    "hv": {
+     "qty": 134,
+     "time": 798
+    },
+    "f1": {
+     "qty": 1986,
+     "time": 4966.75
+    }
+   }
+  },
+  {
+   "key": "stone-foundation",
+   "name": "Stone Foundation",
+   "category": "Building",
+   "shortname": null,
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 10,
+     "time": 22.5
+    },
+    "explo": {
+     "qty": 185,
+     "time": 78.675
+    },
+    "beancan": {
+     "qty": 46,
+     "time": 175.125
+    },
+    "hv": {
+     "qty": 32,
+     "time": 186
+    },
+    "f1": {
+     "qty": 182,
+     "time": 456.75
+    }
+   }
+  },
+  {
+   "key": "sheet-metal-foundation",
+   "name": "Sheet Metal Foundation",
+   "category": "Building",
+   "shortname": null,
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 8,
+     "time": 42
+    },
+    "c4": {
+     "qty": 4,
+     "time": 14.5
+    },
+    "satchel": {
+     "qty": 23,
+     "time": 42
+    },
+    "explo": {
+     "qty": 461,
+     "time": 198.8
+    },
+    "beancan": {
+     "qty": 112,
+     "time": 422.625
+    },
+    "hv": {
+     "qty": 67,
+     "time": 396
+    },
+    "f1": {
+     "qty": 993,
+     "time": 2484.25
+    }
+   }
+  },
+  {
+   "key": "stone-floor",
+   "name": "Stone Floor",
+   "category": "Building",
+   "shortname": null,
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 10,
+     "time": 22.5
+    },
+    "explo": {
+     "qty": 185,
+     "time": 78.675
+    },
+    "beancan": {
+     "qty": 46,
+     "time": 175.125
+    },
+    "hv": {
+     "qty": 32,
+     "time": 186
+    },
+    "f1": {
+     "qty": 182,
+     "time": 456.75
+    }
+   }
+  },
+  {
+   "key": "sheet-metal-floor",
+   "name": "Sheet Metal Floor",
+   "category": "Building",
+   "shortname": null,
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 8,
+     "time": 42
+    },
+    "c4": {
+     "qty": 4,
+     "time": 14.5
+    },
+    "satchel": {
+     "qty": 23,
+     "time": 42
+    },
+    "explo": {
+     "qty": 400,
+     "time": 171.225
+    },
+    "beancan": {
+     "qty": 112,
+     "time": 422.625
+    },
+    "hv": {
+     "qty": 67,
+     "time": 396
+    },
+    "f1": {
+     "qty": 993,
+     "time": 2484.25
+    }
+   }
+  },
+  {
+   "key": "stone-doorway",
+   "name": "Stone Doorway",
+   "category": "Building",
+   "shortname": null,
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 10,
+     "time": 22.5
+    },
+    "explo": {
+     "qty": 185,
+     "time": 78.675
+    },
+    "beancan": {
+     "qty": 46,
+     "time": 175.125
+    },
+    "hv": {
+     "qty": 32,
+     "time": 186
+    },
+    "f1": {
+     "qty": 182,
+     "time": 456.75
+    }
+   }
+  },
+  {
+   "key": "sheet-metal-doorway",
+   "name": "Sheet Metal Doorway",
+   "category": "Building",
+   "shortname": null,
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 8,
+     "time": 42
+    },
+    "c4": {
+     "qty": 4,
+     "time": 14.5
+    },
+    "satchel": {
+     "qty": 23,
+     "time": 42
+    },
+    "explo": {
+     "qty": 400,
+     "time": 171.225
+    },
+    "beancan": {
+     "qty": 112,
+     "time": 422.625
+    },
+    "hv": {
+     "qty": 67,
+     "time": 396
+    },
+    "f1": {
+     "qty": 993,
+     "time": 2484.25
+    }
+   }
+  },
+  {
+   "key": "wooden-door",
+   "name": "Wooden Door",
+   "category": "Doors",
+   "shortname": "door.hinged.wood",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 1,
+     "time": 1
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 2,
+     "time": 10.5
+    },
+    "explo": {
+     "qty": 19,
+     "time": 7.375
+    },
+    "beancan": {
+     "qty": 6,
+     "time": 25.125
+    },
+    "hv": {
+     "qty": 4,
+     "time": 18
+    },
+    "f1": {
+     "qty": 23,
+     "time": 59.25
+    }
+   }
+  },
+  {
+   "key": "sheet-metal-door",
+   "name": "Sheet Metal Door",
+   "category": "Doors",
+   "shortname": "door.hinged.metal",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 2,
+     "time": 6
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 4,
+     "time": 13.5
+    },
+    "explo": {
+     "qty": 63,
+     "time": 23.525
+    },
+    "beancan": {
+     "qty": 18,
+     "time": 70.125
+    },
+    "hv": {
+     "qty": 11,
+     "time": null
+    },
+    "f1": {
+     "qty": 50,
+     "time": 126.75
+    }
+   }
+  },
+  {
+   "key": "garage-door",
+   "name": "Garage Door",
+   "category": "Doors",
+   "shortname": "wall.frame.garagedoor",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 3,
+     "time": 12
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 9,
+     "time": 21
+    },
+    "explo": {
+     "qty": 150,
+     "time": 64.1
+    },
+    "beancan": {
+     "qty": 42,
+     "time": 160.125
+    },
+    "hv": {
+     "qty": 25,
+     "time": 144
+    },
+    "f1": {
+     "qty": 120,
+     "time": 301.75
+    }
+   }
+  },
+  {
+   "key": "armored-door",
+   "name": "Armored Door",
+   "category": "Doors",
+   "shortname": "door.hinged.toptier",
+   "armored": true,
+   "costs": {
+    "rocket": {
+     "qty": 5,
+     "time": 24
+    },
+    "c4": {
+     "qty": 3,
+     "time": 13
+    },
+    "satchel": {
+     "qty": 15,
+     "time": 30
+    },
+    "explo": {
+     "qty": 250,
+     "time": 106.95
+    },
+    "beancan": {
+     "qty": 69,
+     "time": 261.375
+    },
+    "hv": {
+     "qty": 42,
+     "time": 246
+    },
+    "f1": {
+     "qty": 200,
+     "time": 501.75
+    }
+   }
+  },
+  {
+   "key": "wood-double-door",
+   "name": "Wood Double Door",
+   "category": "Doors",
+   "shortname": "door.double.hinged.wood",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 1,
+     "time": 1
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 2,
+     "time": 10.5
+    },
+    "explo": {
+     "qty": 19,
+     "time": 7.375
+    },
+    "beancan": {
+     "qty": 6,
+     "time": 25.125
+    },
+    "hv": {
+     "qty": 4,
+     "time": 18
+    },
+    "f1": {
+     "qty": 23,
+     "time": 59.25
+    }
+   }
+  },
+  {
+   "key": "sheet-metal-double-door",
+   "name": "Sheet Metal Double Door",
+   "category": "Doors",
+   "shortname": "door.double.hinged.metal",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 2,
+     "time": 6
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 4,
+     "time": 13.5
+    },
+    "explo": {
+     "qty": 63,
+     "time": 23.525
+    },
+    "beancan": {
+     "qty": 18,
+     "time": 70.125
+    },
+    "hv": {
+     "qty": 11,
+     "time": null
+    },
+    "f1": {
+     "qty": 50,
+     "time": 126.75
+    }
+   }
+  },
+  {
+   "key": "armored-double-door",
+   "name": "Armored Double Door",
+   "category": "Doors",
+   "shortname": "door.double.hinged.toptier",
+   "armored": true,
+   "costs": {
+    "rocket": {
+     "qty": 5,
+     "time": 24
+    },
+    "c4": {
+     "qty": 3,
+     "time": 13
+    },
+    "satchel": {
+     "qty": 15,
+     "time": 30
+    },
+    "explo": {
+     "qty": 250,
+     "time": 106.95
+    },
+    "beancan": {
+     "qty": 69,
+     "time": 261.375
+    },
+    "hv": {
+     "qty": 42,
+     "time": 246
+    },
+    "f1": {
+     "qty": 200,
+     "time": 501.75
+    }
+   }
+  },
+  {
+   "key": "ladder-hatch",
+   "name": "Ladder Hatch",
+   "category": "Hatches",
+   "shortname": "floor.ladder.hatch",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 2,
+     "time": 6
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 4,
+     "time": 13.5
+    },
+    "explo": {
+     "qty": 63,
+     "time": 23.525
+    },
+    "beancan": {
+     "qty": 18,
+     "time": 70.125
+    },
+    "hv": {
+     "qty": 11,
+     "time": null
+    },
+    "f1": {
+     "qty": 50,
+     "time": 126.75
+    }
+   }
+  },
+  {
+   "key": "triangle-ladder-hatch",
+   "name": "Triangle Ladder Hatch",
+   "category": "Hatches",
+   "shortname": "floor.triangle.ladder.hatch",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 2,
+     "time": 6
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 4,
+     "time": 13.5
+    },
+    "explo": {
+     "qty": 63,
+     "time": 23.525
+    },
+    "beancan": {
+     "qty": 18,
+     "time": 70.125
+    },
+    "hv": {
+     "qty": 11,
+     "time": null
+    },
+    "f1": {
+     "qty": 50,
+     "time": 126.75
+    }
+   }
+  },
+  {
+   "key": "high-external-wooden-wall",
+   "name": "High External Wooden Wall",
+   "category": "External Walls",
+   "shortname": "wall.external.high",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 3,
+     "time": 12
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 6,
+     "time": 16.5
+    },
+    "explo": {
+     "qty": 98,
+     "time": 42.325
+    },
+    "beancan": {
+     "qty": 26,
+     "time": 100.125
+    },
+    "hv": {
+     "qty": 18,
+     "time": 102
+    },
+    "f1": {
+     "qty": 118,
+     "time": 296.75
+    }
+   }
+  },
+  {
+   "key": "high-external-stone-wall",
+   "name": "High External Stone Wall",
+   "category": "External Walls",
+   "shortname": "wall.external.high.stone",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 10,
+     "time": 22.5
+    },
+    "explo": {
+     "qty": 185,
+     "time": 78.675
+    },
+    "beancan": {
+     "qty": 46,
+     "time": 175.125
+    },
+    "hv": {
+     "qty": 32,
+     "time": 186
+    },
+    "f1": {
+     "qty": 182,
+     "time": 456.75
+    }
+   }
+  },
+  {
+   "key": "high-external-wooden-gate",
+   "name": "High External Wooden Gate",
+   "category": "External Walls",
+   "shortname": "gates.external.high.wood",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 3,
+     "time": 12
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 6,
+     "time": 16.5
+    },
+    "explo": {
+     "qty": 98,
+     "time": 42.325
+    },
+    "beancan": {
+     "qty": 26,
+     "time": 100.125
+    },
+    "hv": {
+     "qty": 18,
+     "time": 102
+    },
+    "f1": {
+     "qty": 118,
+     "time": 296.75
+    }
+   }
+  },
+  {
+   "key": "high-external-stone-gate",
+   "name": "High External Stone Gate",
+   "category": "External Walls",
+   "shortname": "gates.external.high.stone",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 10,
+     "time": 22.5
+    },
+    "explo": {
+     "qty": 185,
+     "time": 78.675
+    },
+    "beancan": {
+     "qty": 46,
+     "time": 175.125
+    },
+    "hv": {
+     "qty": 32,
+     "time": 186
+    },
+    "f1": {
+     "qty": 182,
+     "time": 456.75
+    }
+   }
+  },
+  {
+   "key": "metal-window-bars",
+   "name": "Metal Window Bars",
+   "category": "Windows",
+   "shortname": "wall.window.bars.metal",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 12,
+     "time": 25.5
+    },
+    "explo": {
+     "qty": 200,
+     "time": 85.525
+    },
+    "beancan": {
+     "qty": 56,
+     "time": 212.625
+    },
+    "hv": {
+     "qty": 34,
+     "time": 198
+    },
+    "f1": {
+     "qty": 497,
+     "time": 1244.25
+    }
+   }
+  },
+  {
+   "key": "reinforced-glass-window",
+   "name": "Reinforced Glass Window",
+   "category": "Windows",
+   "shortname": "wall.window.bars.toptier",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 12,
+     "time": 25.5
+    },
+    "explo": {
+     "qty": 200,
+     "time": 85.525
+    },
+    "beancan": {
+     "qty": 56,
+     "time": 212.625
+    },
+    "hv": {
+     "qty": 34,
+     "time": 198
+    },
+    "f1": {
+     "qty": 497,
+     "time": 1244.25
+    }
+   }
+  },
+  {
+   "key": "strengthened-glass-window",
+   "name": "Strengthened Glass Window",
+   "category": "Windows",
+   "shortname": "wall.window.glass.reinforced",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 3,
+     "time": 12
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 9,
+     "time": 21
+    },
+    "explo": {
+     "qty": 140,
+     "time": 58.125
+    },
+    "beancan": {
+     "qty": 39,
+     "time": 148.875
+    },
+    "hv": {
+     "qty": 24,
+     "time": 138
+    },
+    "f1": {
+     "qty": 348,
+     "time": 871.75
+    }
+   }
+  },
+  {
+   "key": "metal-horizontal-embrasure",
+   "name": "Metal Horizontal Embrasure",
+   "category": "Windows",
+   "shortname": "shutter.metal.embrasure.a",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 13,
+     "time": 27
+    },
+    "explo": {
+     "qty": 173,
+     "time": 72.35
+    },
+    "beancan": {
+     "qty": 59,
+     "time": 223.875
+    },
+    "hv": {
+     "qty": 31,
+     "time": null
+    },
+    "f1": {
+     "qty": 286,
+     "time": 716.75
+    }
+   }
+  },
+  {
+   "key": "metal-vertical-embrasure",
+   "name": "Metal Vertical Embrasure",
+   "category": "Windows",
+   "shortname": "shutter.metal.embrasure.b",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 2,
+     "time": 11.5
+    },
+    "satchel": {
+     "qty": 13,
+     "time": 27
+    },
+    "explo": {
+     "qty": 173,
+     "time": 72.35
+    },
+    "beancan": {
+     "qty": 59,
+     "time": 223.875
+    },
+    "hv": {
+     "qty": 31,
+     "time": null
+    },
+    "f1": {
+     "qty": 286,
+     "time": 716.75
+    }
+   }
+  },
+  {
+   "key": "tool-cupboard",
+   "name": "Tool Cupboard",
+   "category": "Deployables",
+   "shortname": "cupboard.tool",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 1,
+     "time": 1
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 1,
+     "time": 9
+    },
+    "explo": {
+     "qty": 10,
+     "time": 1.575
+    },
+    "beancan": {
+     "qty": 4,
+     "time": 8.55
+    },
+    "hv": {
+     "qty": 2,
+     "time": 6
+    },
+    "f1": {
+     "qty": 43,
+     "time": 54.1
+    }
+   }
+  },
+  {
+   "key": "auto-turret",
+   "name": "Auto Turret",
+   "category": "Deployables",
+   "shortname": "autoturret",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 4,
+     "time": 18
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 2,
+     "time": 10.5
+    },
+    "explo": {
+     "qty": 112,
+     "time": 44.775
+    },
+    "beancan": {
+     "qty": 16,
+     "time": 22.95
+    },
+    "hv": {
+     "qty": 3,
+     "time": 12
+    },
+    "f1": {
+     "qty": 10,
+     "time": 14.5
+    }
+   }
+  },
+  {
+   "key": "flame-turret",
+   "name": "Flame Turret",
+   "category": "Deployables",
+   "shortname": "flameturret",
+   "armored": false,
+   "costs": {
+    "rocket": {
+     "qty": 2,
+     "time": 6
+    },
+    "c4": {
+     "qty": 1,
+     "time": 10
+    },
+    "satchel": {
+     "qty": 1,
+     "time": 9
+    },
+    "explo": {
+     "qty": 34,
+     "time": 14.225
+    },
+    "beancan": {
+     "qty": 7,
+     "time": 12.15
+    },
+    "hv": {
+     "qty": 1,
+     "time": 1
+    },
+    "f1": {
+     "qty": 5,
+     "time": 8.5
+    }
+   }
+  }
+ ]
+}

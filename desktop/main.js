@@ -1,0 +1,507 @@
+// RustScout desktop app: runs the same backend (server.js) inside Electron and shows the UI in its own
+// window. Data lives in %APPDATA%\RustScout, so the install folder can stay read-only.
+const { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain, nativeImage, Notification, globalShortcut, screen } = require('electron');
+const { spawn } = require('child_process');
+const fs = require('fs');
+const net = require('net');
+const path = require('path');
+
+// Tests point this elsewhere so they never touch a real install's data.
+if (process.env.ROT_USER_DATA) app.setPath('userData', path.resolve(process.env.ROT_USER_DATA));
+
+if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+}
+
+const ROOT = path.join(__dirname, '..');
+// "Import from old version" only exists in the personal build (npm run dist:personal); the build shared with
+// friends leaves it out. The flag is written into the packaged package.json at build time.
+const IMPORT_OLD = require(path.join(ROOT, 'package.json')).rustscout?.importOldVersion === true;
+const USER = app.getPath('userData');
+const DATA = path.join(USER, 'data');
+const ICON = path.join(__dirname, 'icon.png');
+const hiddenStart = process.argv.includes('--hidden');
+
+let server = null;
+let win = null;
+let tray = null;
+let base = null;
+let quitting = false;
+let linking = null;
+
+app.setAppUserModelId('com.rustscout.app');
+
+// A fixed port keeps the page's saved settings (tabs, filters, plans) — they're stored per address.
+function freePort(from, to) {
+    return new Promise((resolve, reject) => {
+        const tryPort = p => {
+            if (p > to) return reject(new Error(`No free port between ${from} and ${to}`));
+            const s = net.createServer();
+            s.once('error', () => tryPort(p + 1));
+            s.once('listening', () => s.close(() => resolve(p)));
+            s.listen(p, '127.0.0.1');
+        };
+        tryPort(from);
+    });
+}
+
+async function startServer() {
+    fs.mkdirSync(DATA, { recursive: true });
+    Object.assign(process.env, {
+        DESKTOP: '1',
+        DATA_DIR: DATA,
+        CONFIG_FILE: path.join(USER, 'config.json'),
+        RUSTPLUS_CONFIG: path.join(USER, 'rustplus.config.json'),
+        PORT: String(await freePort(30120, 30139))
+    });
+    server = require(path.join(ROOT, 'server.js'));
+    const port = await server.listening;
+    base = `http://localhost:${port}`;
+}
+
+function showWindow() {
+    if (!win) return createWindow();
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+}
+
+function createWindow() {
+    win = new BrowserWindow({
+        width: 1440, height: 900, minWidth: 900, minHeight: 600,
+        title: 'RustScout', icon: ICON, backgroundColor: '#0b0b0c', autoHideMenuBar: true, show: false,
+        webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true }
+    });
+    win.loadURL(base);
+    // Started by Windows at login: stay in the tray until clicked.
+    win.once('ready-to-show', () => { if (!hiddenStart) win.show(); });
+
+    // Links to RustMaps, Steam profiles, server websites and steam://connect open outside the app.
+    const external = url => /^(https?|steam):/i.test(url) && !url.startsWith(base);
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        if (external(url)) shell.openExternal(url);
+        return { action: 'deny' };
+    });
+    win.webContents.on('will-navigate', (e, url) => {
+        if (url.startsWith(base)) return;
+        e.preventDefault();
+        if (external(url)) shell.openExternal(url);
+    });
+
+    // Closing the window keeps the app (and its alerts) running in the tray.
+    win.on('close', e => {
+        if (quitting) return;
+        e.preventDefault();
+        if (appOverlay) return toggleAppOverlay('close button');
+        win.hide();
+        if (!settings().trayHintShown) {
+            saveSettings({ trayHintShown: true });
+            new Notification({ title: 'RustScout is still running', body: 'Alerts keep coming. Open it again from the tray icon, or right-click the icon → Quit.', icon: ICON }).show();
+        }
+    });
+    win.on('closed', () => { win = null; });
+}
+
+/* ---- small settings file for the desktop shell itself ---- */
+
+const SHELL_FILE = path.join(USER, 'desktop.json');
+const settings = () => { try { return JSON.parse(fs.readFileSync(SHELL_FILE, 'utf8')); } catch { return {}; } };
+const saveSettings = patch => fs.writeFileSync(SHELL_FILE, JSON.stringify({ ...settings(), ...patch }, null, 2));
+
+/* ---- start with Windows ---- */
+
+const autoStart = () => app.getLoginItemSettings({ args: ['--hidden'] }).openAtLogin;
+function setAutoStart(on) {
+    app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] });
+    buildTray();
+}
+
+/* ---- Steam / Rust+ linking, in an app window instead of an external browser ---- */
+
+// The Rust+ login page hands its token to the phone app through window.ReactNativeWebView.postMessage;
+// login-preload.js provides that function and forwards the message here.
+function steamLogin(url) {
+    return new Promise((resolve, reject) => {
+        const w = new BrowserWindow({
+            parent: win || undefined, width: 520, height: 780, title: 'Link Steam — Rust+', icon: ICON, autoHideMenuBar: true,
+            backgroundColor: '#111111',
+            webPreferences: { preload: path.join(__dirname, 'login-preload.js'), contextIsolation: true, sandbox: true, partition: 'rustplus-login' }
+        });
+        let done = false;
+        const allowed = new URL(url).origin;
+        const onToken = (e, message) => {
+            // Only the Rust+ login site may hand over a token (not Steam's pages or anything else in this window).
+            if (e.sender !== w.webContents || new URL(e.senderFrame?.url || 'about:blank').origin !== allowed) return;
+            done = true;
+            let token = null;
+            try { token = JSON.parse(message).Token; } catch { /* handled below */ }
+            token ? resolve(String(token)) : reject(new Error('The Rust+ login didn’t return a token. Try again.'));
+            w.close();
+        };
+        ipcMain.on('rustplus-token', onToken);
+        w.on('closed', () => {
+            ipcMain.removeListener('rustplus-token', onToken);
+            if (!done) reject(new Error('The Steam login window was closed before it finished.'));
+        });
+        w.loadURL(url);
+    });
+}
+
+function linkSteam() {
+    if (linking) return linking;
+    linking = (async () => {
+        const { register, LOGIN_URL } = require(path.join(ROOT, 'src', 'register.js'));
+        const progress = (step, text) => win?.webContents.send('link-progress', { step, text });
+        const creds = await register(() => steamLogin(process.env.RUSTPLUS_LOGIN_URL || LOGIN_URL), progress);
+        fs.writeFileSync(server.credsFile, JSON.stringify(creds, null, 2));
+        await server.startFcm();
+        return { ok: true, status: server.fcmStatus() };
+    })().catch(e => ({ ok: false, error: e.message })).finally(() => { linking = null; });
+    return linking;
+}
+
+ipcMain.handle('link-steam', () => linkSteam());
+ipcMain.on('show-window', () => showWindow());
+
+/* ---- import from the zip/folder version ---- */
+
+const IMPORT = {
+    user: ['config.json', 'rustplus.config.json'],
+    data: ['servers.json', 'servers', 'tracked.json', 'threats.json', 'watch.json', 'fcm-seen.json', 'terrain', 'rustmaps']
+};
+
+const importable = dir => [...IMPORT.user.map(f => path.join(dir, f)), ...IMPORT.data.map(f => path.join(dir, 'data', f))].filter(f => fs.existsSync(f));
+
+// Copies the old version's files in (the old folder is left as it was). Returns what was copied.
+function importFrom(dir) {
+    const copied = [];
+    for (const f of IMPORT.user) if (fs.existsSync(path.join(dir, f))) { fs.cpSync(path.join(dir, f), path.join(USER, f)); copied.push(f); }
+    for (const f of IMPORT.data) if (fs.existsSync(path.join(dir, 'data', f))) { fs.cpSync(path.join(dir, 'data', f), path.join(DATA, f), { recursive: true }); copied.push(`data/${f}`); }
+    // The old config pins port 3000 and may point at a credentials file by relative path; the app manages both.
+    try {
+        const c = JSON.parse(fs.readFileSync(path.join(USER, 'config.json'), 'utf8'));
+        delete c.port;
+        delete c.credentialsFile;
+        fs.writeFileSync(path.join(USER, 'config.json'), JSON.stringify(c, null, 2));
+    } catch { /* no config imported */ }
+    return copied;
+}
+
+async function importOld() {
+    const pick = await dialog.showOpenDialog(win, { title: 'Pick your old version’s folder (the one with server.js, e.g. rustontop-free)', properties: ['openDirectory'] });
+    if (pick.canceled || !pick.filePaths[0]) return;
+    const dir = pick.filePaths[0];
+    if (!importable(dir).some(f => /servers\.json$|config\.json$/.test(f))) {
+        dialog.showMessageBox(win, { type: 'warning', title: 'Nothing to import', message: 'That folder doesn’t look like an older RustScout (Rust On Top) folder.', detail: 'Pick the folder that has server.js and a data folder in it.' });
+        return;
+    }
+    const ok = await dialog.showMessageBox(win, {
+        type: 'question', buttons: ['Import and restart', 'Cancel'], defaultId: 0, cancelId: 1, title: 'Import',
+        message: 'Import your servers, settings, Steam link and history?',
+        detail: `From ${dir}\n\nThis replaces what the app has now. The old folder isn’t changed.`
+    });
+    if (ok.response !== 0) return;
+    importAndRestart(dir);
+}
+
+// Stop first so nothing still running saves its (old) state over the imported files, then start fresh.
+function importAndRestart(dir) {
+    server.stop();
+    importFrom(dir);
+    quitting = true;
+    app.relaunch();
+    app.exit(0);
+}
+
+/* ---- night vision: brighter display gamma for dark nights in game ---- */
+
+// Windows display gamma (what driver brightness/gamma sliders change). Nothing in any game is touched.
+const GAMMA_EXE = app.isPackaged ? path.join(process.resourcesPath, 'gamma.exe') : path.join(__dirname, 'gamma', 'gamma.exe');
+const GAMMA_LEVELS = [
+    { name: 'Off', gamma: 1, lift: 0 },
+    { name: 'Low', gamma: 1.4, lift: 0.02 },
+    { name: 'Medium', gamma: 1.8, lift: 0.04 },
+    { name: 'High', gamma: 2.3, lift: 0.06 },
+    { name: 'Max', gamma: 2.8, lift: 0.09 }
+];
+// Hotkeys: first choice, then fallbacks. Windows gives each combination to whichever program claims it first
+// (GPU tools, Discord, Parsec…), so if one is taken we use the next and show the one we actually got.
+const KEY_CHOICES = {
+    gammaCycle: ['Control+Alt+G', 'Control+Alt+N', 'Control+Alt+Shift+G'],
+    gammaOff: ['Control+Alt+H', 'Control+Alt+B', 'Control+Alt+Shift+H'],
+    hud: ['Control+Alt+O', 'Control+Alt+U', 'Control+Alt+Shift+O'],
+    crosshair: ['Control+Alt+X', 'Control+Alt+C', 'Control+Alt+Shift+X'],
+    app: ['Control+Alt+M', 'Control+Alt+R', 'Control+Alt+K', 'Control+Alt+Shift+M']
+};
+// Tests run beside a real install that already holds these keys, so they use Shift+ variants only.
+if (process.env.ROT_USER_DATA) for (const k of Object.keys(KEY_CHOICES)) KEY_CHOICES[k] = KEY_CHOICES[k].map(c => c.replace('Alt+', 'Alt+Shift+').replace('Shift+Shift+', 'Shift+'));
+const KEYS = {}; // what we actually got, e.g. KEYS.app = 'Control+Alt+R' (null if every choice was taken)
+function claimKey(name, fn) {
+    KEYS[name] = KEY_CHOICES[name].find(k => { try { return globalShortcut.register(k, fn); } catch { return false; } }) || null;
+}
+const keyLabel = name => KEYS[name] ? KEYS[name].replace(/Control/, 'Ctrl').replace(/\+/g, ' + ') : 'no free key';
+let gammaLevel = 0;
+let gammaWarned = false;
+let gammaProc = null;
+let gammaQueue = [];
+
+// The helper stays running: the colour-filter method only lasts while it does, and if RustScout ever exits
+// or crashes, the helper's input closes and it puts the display back to normal by itself.
+function gammaHelper() {
+    if (gammaProc && gammaProc.exitCode === null) return gammaProc;
+    gammaProc = spawn(GAMMA_EXE, ['--serve'], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    let buf = '';
+    gammaProc.stdout.on('data', d => {
+        buf += d;
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, i).trim();
+            buf = buf.slice(i + 1);
+            const done = gammaQueue.shift();
+            let r = null;
+            try { r = JSON.parse(line); } catch { /* treated as failure */ }
+            done?.(r);
+        }
+    });
+    gammaProc.on('exit', () => { gammaQueue.splice(0).forEach(done => done(null)); gammaProc = null; });
+    gammaProc.on('error', () => { gammaQueue.splice(0).forEach(done => done(null)); gammaProc = null; });
+    return gammaProc;
+}
+const gammaSend = (gamma, lift) => new Promise(resolve => {
+    const proc = gammaHelper();
+    gammaQueue.push(resolve);
+    proc.stdin.write(`${gamma} ${lift}\n`);
+});
+
+async function setGamma(level) {
+    const lv = GAMMA_LEVELS[level];
+    const r = await gammaSend(lv.gamma, lv.lift);
+    if (!r?.ok) {
+        gammaLevel = 0;
+        buildTray();
+        if (level && !gammaWarned) {
+            gammaWarned = true;
+            dialog.showMessageBox(win?.isVisible() ? win : null, {
+                type: 'warning', title: 'Night vision', message: 'Windows wouldn’t let RustScout brighten this display.',
+                detail: 'Try NVIDIA Control Panel → Display → Adjust desktop color settings → Gamma / Digital vibrance, '
+                    + 'or the same setting in AMD Software.'
+            });
+        }
+        return;
+    }
+    gammaLevel = level;
+    buildTray();
+    tray?.setToolTip(level ? `RustScout — night vision ${lv.name}${r.strength < 1 ? ` (${Math.round(r.strength * 100)}%, Windows limit)` : ''}` : 'RustScout');
+}
+// Back to normal and stop the helper (quitting).
+function resetGamma() {
+    if (!gammaProc) return;
+    try { gammaProc.stdin.write('quit\n'); gammaProc.stdin.end(); } catch { /* already gone */ }
+}
+
+function registerGammaKeys() {
+    claimKey('gammaCycle', () => setGamma((gammaLevel + 1) % GAMMA_LEVELS.length));
+    claimKey('gammaOff', () => setGamma(0));
+}
+
+/* ---- in-game overlay: HUD + custom crosshair in a click-through window over the game ---- */
+
+const OVERLAY_DEFAULT = { hud: false, hudCorner: 'top-right', display: null, crosshair: { on: false, style: 'cross', size: 8, gap: 4, thickness: 2, color: '#00ff66', opacity: 1, outline: true, dot: false } };
+let overlayWin = null;
+
+const overlaySettings = () => {
+    const o = settings().overlay || {};
+    return { ...OVERLAY_DEFAULT, ...o, crosshair: { ...OVERLAY_DEFAULT.crosshair, ...o.crosshair } };
+};
+
+// The overlay window only exists while the HUD or crosshair is on.
+function updateOverlay() {
+    const o = overlaySettings();
+    const want = o.hud || o.crosshair.on;
+    if (!want) { overlayWin?.destroy(); overlayWin = null; buildTray(); return; }
+    const display = screen.getAllDisplays().find(d => d.id === o.display) || screen.getPrimaryDisplay();
+    if (!overlayWin) {
+        overlayWin = new BrowserWindow({
+            ...display.bounds, transparent: true, frame: false, resizable: false, movable: false, focusable: false,
+            skipTaskbar: true, hasShadow: false, alwaysOnTop: true, show: false, backgroundColor: '#00000000',
+            webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true }
+        });
+        overlayWin.setAlwaysOnTop(true, 'screen-saver'); // above borderless/windowed games
+        overlayWin.setIgnoreMouseEvents(true);            // clicks go straight through to the game
+        overlayWin.loadURL(`${base}/overlay.html`);
+        // did-finish-load: the page's script is listening by then (ready-to-show isn't reliable for transparent windows).
+        overlayWin.webContents.on('did-finish-load', () => { overlayWin?.showInactive(); sendOverlay(); });
+        overlayWin.on('resize', () => sendOverlay());
+        overlayWin.on('closed', () => { overlayWin = null; });
+    } else {
+        overlayWin.setBounds(display.bounds);
+    }
+    sendOverlay();
+    buildTray();
+}
+
+// Settings plus the monitor's exact centre in overlay-window coordinates, so the crosshair lands dead centre.
+function sendOverlay() {
+    if (!overlayWin) return;
+    const o = overlaySettings();
+    const d = (screen.getAllDisplays().find(x => x.id === o.display) || screen.getPrimaryDisplay()).bounds;
+    const w = overlayWin.getBounds();
+    overlayWin.webContents.send('overlay-settings', { ...o, center: { x: d.x + d.width / 2 - w.x, y: d.y + d.height / 2 - w.y } });
+}
+
+function setOverlay(patch) {
+    const o = overlaySettings();
+    const next = { ...o, ...patch, crosshair: { ...o.crosshair, ...patch.crosshair } };
+    saveSettings({ overlay: next });
+    updateOverlay();
+    win?.webContents.send('overlay-settings', next);
+    return next;
+}
+
+ipcMain.handle('overlay-get', () => overlaySettings());
+ipcMain.handle('hotkeys', () => Object.fromEntries(Object.keys(KEY_CHOICES).map(k => [k, keyLabel(k)])));
+ipcMain.handle('overlay-set', (e, patch) => setOverlay(patch || {}));
+ipcMain.handle('overlay-displays', () => screen.getAllDisplays().map((d, i) => ({
+    id: d.id, label: `Screen ${i + 1} — ${d.size.width}×${d.size.height}${d.id === screen.getPrimaryDisplay().id ? ' (main)' : ''}`
+})));
+
+// The whole app over the game (like the Steam/Discord overlay): one hotkey shows it full-screen on top of the
+// game's monitor, the same hotkey puts everything back the way it was and returns you to the game.
+let appOverlay = null; // saved window state while the app is over the game
+
+// Small log of overlay/hotkey events in %APPDATA%\RustScout\desktop.log, to diagnose "pressed it, nothing happened".
+function dlog(msg) {
+    try {
+        const f = path.join(USER, 'desktop.log');
+        if (fs.existsSync(f) && fs.statSync(f).size > 200000) fs.renameSync(f, f + '.old');
+        fs.appendFileSync(f, `${new Date().toISOString()} ${msg}\n`);
+    } catch { /* logging must never break anything */ }
+}
+const winState = () => win ? `visible=${win.isVisible()} onTop=${win.isAlwaysOnTop()} minimized=${win.isMinimized()} focused=${win.isFocused()}` : 'no window';
+
+function toggleAppOverlay(source = 'hotkey') {
+    if (!win) createWindow();
+    // Decide from what's really on screen, not just remembered state: if the app isn't visibly over the game
+    // (closed some other way, or Windows refused a step), this press should open it, not "close" it.
+    if (appOverlay && !(win.isVisible() && !win.isMinimized() && win.isAlwaysOnTop())) {
+        dlog(`app overlay: state said open but window is not (${winState()}), opening instead`);
+        appOverlay = null;
+    }
+    try {
+        appOverlayStep();
+    } catch (e) {
+        dlog(`app overlay error: ${e.stack || e.message}`);
+        appOverlay = null;
+    }
+    dlog(`app overlay ${source}: now ${appOverlay ? 'OPEN' : 'CLOSED'} (${winState()})`);
+}
+
+function appOverlayStep() {
+    if (appOverlay) {
+        const saved = appOverlay;
+        appOverlay = null;
+        win.setAlwaysOnTop(false);
+        win.setOpacity(1);
+        win.setBounds(saved.bounds);
+        if (saved.maximized) win.maximize();
+        win.webContents.send('app-overlay', false);
+        overlayWin?.showInactive(); // crosshair/HUD back
+        // Minimize first: that makes Windows give focus back to the window underneath (the game).
+        // A plain hide() leaves keyboard focus stuck on the hidden window, so the game ignores your keys.
+        win.minimize();
+        win.hide(); // the tray icon (or the hotkey) brings it back, same size and place
+        return;
+    }
+    appOverlay = { bounds: win.getNormalBounds(), maximized: win.isMaximized() };
+    const display = screen.getAllDisplays().find(d => d.id === overlaySettings().display) || screen.getPrimaryDisplay();
+    overlayWin?.hide(); // no crosshair on top of the app
+    if (win.isMaximized()) win.unmaximize();
+    if (win.isMinimized()) win.restore();
+    win.setBounds(display.bounds);
+    win.setOpacity(0.96);
+    win.show();
+    win.setAlwaysOnTop(true, 'screen-saver'); // after show(): showing resets it on Windows
+    win.focus();
+    win.webContents.send('app-overlay', keyLabel('app'));
+}
+
+function registerOverlayKeys() {
+    claimKey('app', () => toggleAppOverlay('hotkey'));
+    claimKey('hud', () => setOverlay({ hud: !overlaySettings().hud }));
+    claimKey('crosshair', () => setOverlay({ crosshair: { on: !overlaySettings().crosshair.on } }));
+}
+
+/* ---- tray ---- */
+
+function buildTray() {
+    const menu = Menu.buildFromTemplate([
+        { label: 'Open RustScout', click: showWindow },
+        { type: 'separator' },
+        { label: 'Link Steam account…', click: async () => { showWindow(); const r = await linkSteam(); if (!r.ok) dialog.showMessageBox(win, { type: 'error', title: 'Steam link', message: 'Couldn’t link Steam', detail: r.error }); } },
+        { label: 'Start with Windows', type: 'checkbox', checked: autoStart(), click: item => setAutoStart(item.checked) },
+        ...(IMPORT_OLD ? [{ label: 'Import from old version (Rust On Top)…', click: importOld }] : []),
+        {
+            label: `Night vision (${GAMMA_LEVELS[gammaLevel].name})`, submenu: [
+                ...GAMMA_LEVELS.map((lv, i) => ({ label: lv.name, type: 'radio', checked: i === gammaLevel, click: () => setGamma(i) })),
+                { type: 'separator' },
+                { label: `${keyLabel('gammaCycle')}: next level`, enabled: false },
+                { label: `${keyLabel('gammaOff')}: off`, enabled: false },
+                { label: 'Works in borderless/windowed mode (not exclusive fullscreen)', enabled: false }
+            ]
+        },
+        {
+            label: 'In-game overlay', submenu: [
+                { label: `HUD (${keyLabel('hud')})`, type: 'checkbox', checked: overlaySettings().hud, click: i => setOverlay({ hud: i.checked }) },
+                { label: `Crosshair (${keyLabel('crosshair')})`, type: 'checkbox', checked: overlaySettings().crosshair.on, click: i => setOverlay({ crosshair: { on: i.checked } }) },
+                { label: `App over the game (${keyLabel('app')})`, click: () => toggleAppOverlay('tray') },
+                { label: 'Customize… (Settings tab)', click: () => { showWindow(); win?.webContents.executeJavaScript("openTab('settings'); document.getElementById('overlay-settings')?.scrollIntoView()").catch(() => {}); } },
+                { label: 'Borderless/windowed mode only', enabled: false }
+            ]
+        },
+        { label: 'Open data folder', click: () => shell.openPath(USER) },
+        { type: 'separator' },
+        { label: 'Quit', click: () => { quitting = true; app.quit(); } }
+    ]);
+    if (!tray) {
+        tray = new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
+        tray.setToolTip('RustScout');
+        tray.on('click', showWindow);
+    }
+    tray.setContextMenu(menu);
+}
+
+/* ---- lifecycle ---- */
+
+app.on('second-instance', showWindow);
+app.on('will-quit', () => { globalShortcut.unregisterAll(); resetGamma(); });
+app.on('before-quit', () => {
+    quitting = true;
+    try { server?.stop(); } catch { /* best effort */ }
+});
+app.on('window-all-closed', () => { /* stay in the tray */ });
+
+app.whenReady().then(async () => {
+    try {
+        await startServer();
+    } catch (e) {
+        dialog.showErrorBox('RustScout couldn’t start', e.stack || e.message);
+        app.exit(1);
+        return;
+    }
+    // First run: start with Windows unless the user turned it off (it's what keeps alerts coming).
+    if (!settings().autoStartAsked) {
+        saveSettings({ autoStartAsked: true });
+        if (app.isPackaged && !process.env.ROT_USER_DATA) app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] });
+    }
+    buildTray();
+    registerGammaKeys();
+    registerOverlayKeys();
+    buildTray(); // now showing the keys we actually got
+    dlog(`started ${app.getVersion()}; hotkeys: ${JSON.stringify(KEYS)}`);
+    updateOverlay();
+    createWindow();
+});
+
+// Test hook (only with a throwaway data folder): lets automated tests reach main-process functions.
+if (process.env.ROT_USER_DATA) global.__rotTest = { importFrom, importable, importAndRestart, autoStart, setGamma, toggleAppOverlay, gammaState: () => ({ level: gammaLevel, helperRunning: !!gammaProc && gammaProc.exitCode === null }) };

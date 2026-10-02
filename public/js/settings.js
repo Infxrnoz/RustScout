@@ -1,0 +1,150 @@
+'use strict';
+
+(() => {
+    // The active server's real state, not just "selected".
+    function liveStatus() {
+        const st = S.snapshot?.status || 'connecting';
+        if (st === 'online') return '<b class="ok">connected</b>';
+        if (st === 'not answering') return '<b class="flame">not answering Rust+ — retrying</b>';
+        return `<b class="warn">${esc(st)}…</b>`;
+    }
+
+    function renderServers() {
+        const s = S.servers;
+        if (!s) return;
+        $('#fcm-status').innerHTML = `Push listener: <b class="${s.fcm === 'listening' ? 'ok' : 'flame'}">${esc(s.fcm)}</b>`
+            + (window.desktop ? ` <button class="btn small${s.fcm === 'listening' ? ' ghost' : ''}" id="link-steam">${s.fcm === 'listening' ? 'Re-link Steam' : 'Link Steam'}</button>` : '');
+        $('#link-steam')?.addEventListener('click', linkSteam);
+        $('#server-list').innerHTML = s.list.map(v => `
+            <div class="item flat ${v.id === s.active ? 'active-server' : ''}">
+                <div class="grow"><div class="title">${esc(v.name)}</div><div class="sub">${esc(v.id)}${v.id === s.active ? ` · ${liveStatus()}` : ''}</div></div>
+                ${v.id === s.active ? '' : `<button class="btn small" data-act="${esc(v.id)}">Connect</button>`}
+                <button class="icon-btn" data-del="${esc(v.id)}">✕</button>
+            </div>`).join('') || empty('No servers paired yet.');
+        $$('#server-list [data-act]').forEach(b => b.onclick = () => api(`/api/servers/${encodeURIComponent(b.dataset.act)}/activate`, { method: 'POST' }).catch(() => {}));
+        $$('#server-list [data-del]').forEach(b => b.onclick = async () => {
+            if (!confirm('Remove this server?')) return;
+            S.servers = await api(`/api/servers/${encodeURIComponent(b.dataset.del)}`, { method: 'DELETE' });
+            renderServers();
+        });
+    }
+
+    $('#server-form').onsubmit = async e => {
+        e.preventDefault();
+        try {
+            await api('/api/servers', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) });
+            e.target.reset();
+        } catch (err) { toast({ kind: 'alarm', label: 'Could not add server', text: err.message }); }
+    };
+
+    let settings = null;
+
+    async function loadSettings() {
+        try { settings = await api('/api/settings'); } catch { return; }
+        $('#set-webhook').value = settings.discordWebhook;
+        $('#set-steamkey').value = settings.steamApiKey;
+        $('#set-rustmaps').value = settings.rustMapsKey;
+        $('#set-bot').checked = settings.bot.enabled;
+        $('#set-prefix').value = settings.bot.prefix;
+        $('#set-sulfur').value = settings.sulfurSaleAlertMin;
+        $('#set-upkeep').value = settings.upkeepAlertHours;
+        $('#set-decay').value = settings.decayAlertMinutes;
+        $('#set-desktop').checked = store.get('desktopNotify', !!window.desktop);
+        $('#set-dbot').checked = settings.discordBot.enabled;
+        $('#set-dbot-token').value = settings.discordBot.token;
+        $('#set-dbot-channel').value = settings.discordBot.channelId;
+        $('#set-dbot-prefix').value = settings.discordBot.prefix;
+        $('#set-dbot-say').checked = settings.discordBot.allowSay;
+        $('#dbot-status').textContent = `Status: ${settings.discordBotStatus}`;
+        $('#alert-matrix').innerHTML = `<div class="matrix-head"><span></span><span>Toast</span><span>Discord</span></div>` +
+            Object.entries(settings.alertKinds).map(([k, label]) => `
+                <label class="matrix-row"><span>${esc(label)}</span>
+                <input type="checkbox" data-alert="${k}" data-ch="toast" ${settings.alerts[k].toast ? 'checked' : ''}>
+                <input type="checkbox" data-alert="${k}" data-ch="discord" ${settings.alerts[k].discord ? 'checked' : ''}></label>`).join('');
+    }
+
+    async function saveSettings() {
+        const alerts = {};
+        $$('#alert-matrix input').forEach(cb => (alerts[cb.dataset.alert] ??= {})[cb.dataset.ch] = cb.checked);
+        try {
+            await api('/api/settings', {
+                method: 'PUT', body: {
+                    discordWebhook: $('#set-webhook').value.trim(), steamApiKey: $('#set-steamkey').value.trim(), rustMapsKey: $('#set-rustmaps').value.trim(),
+                    bot: { enabled: $('#set-bot').checked, prefix: $('#set-prefix').value.trim() || '!' },
+                    discordBot: {
+                        enabled: $('#set-dbot').checked, token: $('#set-dbot-token').value.trim(), channelId: $('#set-dbot-channel').value.trim(),
+                        prefix: $('#set-dbot-prefix').value.trim() || '!', allowSay: $('#set-dbot-say').checked
+                    },
+                    sulfurSaleAlertMin: $('#set-sulfur').value, upkeepAlertHours: $('#set-upkeep').value, decayAlertMinutes: $('#set-decay').value, alerts
+                }
+            });
+            toast({ kind: 'teamOnline', label: 'Saved', text: 'Settings updated' });
+            loadSettings();
+            // The bot needs a moment to log in; show its status once it has.
+            setTimeout(loadSettings, 4000);
+        } catch (e) { toast({ kind: 'alarm', label: 'Not saved', text: e.message }); }
+    }
+
+    $('#settings-save').onclick = saveSettings;
+    $('#webhook-test').onclick = async () => {
+        try {
+            await api('/api/settings/test-webhook', { method: 'POST' });
+            toast({ kind: 'teamOnline', label: 'Webhook works', text: 'Check your Discord channel' });
+        } catch (e) { toast({ kind: 'alarm', label: 'Webhook failed', text: `${e.message} (save it first)` }); }
+    };
+    $('#set-desktop').onchange = async e => {
+        if (e.target.checked && 'Notification' in window && Notification.permission !== 'granted') {
+            e.target.checked = (await Notification.requestPermission()) === 'granted';
+        }
+        store.set('desktopNotify', e.target.checked);
+    };
+
+    /* ---------- in-game overlay + crosshair (desktop app only) ---------- */
+
+    if (window.desktop) {
+        $('#overlay-settings').hidden = false;
+        const XH = ['size', 'gap', 'thickness', 'opacity'];
+        let ov = null;
+        const preview = () => {
+            const cv = $('#xh-preview'), ctx = cv.getContext('2d');
+            // A dusky "night in game" backdrop, so colour and outline choices read true.
+            const g = ctx.createLinearGradient(0, 0, 0, cv.height);
+            g.addColorStop(0, '#3c4a52'); g.addColorStop(0.6, '#2a3024'); g.addColorStop(1, '#1b1d18');
+            ctx.fillStyle = g; ctx.fillRect(0, 0, cv.width, cv.height);
+            drawCrosshair(ctx, cv.width / 2, cv.height / 2, { ...ov.crosshair, on: true });
+        };
+        const fill = o => {
+            ov = o;
+            $('#ov-hud').checked = o.hud; $('#ov-corner').value = o.hudCorner;
+            $('#xh-on').checked = o.crosshair.on; $('#xh-style').value = o.crosshair.style; $('#xh-color').value = o.crosshair.color;
+            $('#xh-outline').checked = o.crosshair.outline; $('#xh-dot').checked = o.crosshair.dot;
+            for (const k of XH) { $(`#xh-${k}`).value = o.crosshair[k]; $(`#xh-${k}-v`).textContent = k === 'opacity' ? `${Math.round(o.crosshair[k] * 100)}%` : o.crosshair[k]; }
+            $('#ov-display').value = o.display ?? '';
+            preview();
+        };
+        const send = async patch => fill(await window.desktop.setOverlay(patch));
+        $('#ov-hud').onchange = e => send({ hud: e.target.checked });
+        $('#ov-corner').onchange = e => send({ hudCorner: e.target.value });
+        $('#ov-display').onchange = e => send({ display: e.target.value ? Number(e.target.value) : null });
+        $('#xh-on').onchange = e => send({ crosshair: { on: e.target.checked } });
+        $('#xh-style').onchange = e => send({ crosshair: { style: e.target.value } });
+        $('#xh-color').oninput = e => send({ crosshair: { color: e.target.value } });
+        $('#xh-outline').onchange = e => send({ crosshair: { outline: e.target.checked } });
+        $('#xh-dot').onchange = e => send({ crosshair: { dot: e.target.checked } });
+        for (const k of XH) $(`#xh-${k}`).oninput = e => send({ crosshair: { [k]: Number(e.target.value) } });
+        window.desktop.onOverlay(fill); // hotkeys and the tray change it too
+        (async () => {
+            // Show the keys actually in use: if another program owns one, the app falls back to another.
+            const keys = await window.desktop.hotkeys();
+            for (const k of ['app', 'hud', 'crosshair']) $(`#key-${k}`).textContent = keys[k];
+            const displays = await window.desktop.displays();
+            $('#ov-display').innerHTML = '<option value="">Main screen</option>' + displays.map(d => `<option value="${d.id}">${esc(d.label)}</option>`).join('');
+            fill(await window.desktop.getOverlay());
+        })();
+    }
+
+    bus.on('servers', renderServers);
+    bus.on('status', renderServers);
+    bus.on('reset', renderServers);
+    bus.on('tab:settings', loadSettings);
+})();

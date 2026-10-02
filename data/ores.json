@@ -1,0 +1,23 @@
+{
+  "source": "Rust client asset bundles (content.bundle + assetscenes.bundle), live procedural spawn handler spawn.procmap.v3, read with scripts/extract-ore-tables.py",
+  "extracted": "2026-10-01",
+  "notes": [
+    "Filters: biome/splat are bitmasks of channel indices (biome: arid=1 temperate=2 tundra=4 arctic=8 jungle=16; splat: dirt=1 snow=2 sand=4 rock=8 grass=16 forest=32 stones=64 gravel=128). splat -1 = any.",
+    "topologyAny/All/Not are TerrainTopology flag masks.",
+    "Ore mix per folder: resource/ores has PrefabParameters.Count=2 on Stone-Ore (others default 1). Sulfur-Ore's PrefabWeight{Scale 0.5, Era 10} only applies in the Primitive era (Facepunch: 'Less Sulfur Nodes Spawn (50%)'), so vanilla weight is 1."
+  ],
+  "populations": {
+    "ores":           { "folder": "ores",      "density": 1700, "biome": 6,  "splat": -1,  "topologyAny": 20972032, "topologyAll": 0, "topologyNot": 3923354 },
+    "ores_sand":      { "folder": "ores_sand", "density": 1750, "biome": 1,  "splat": 204, "topologyAny": 20972032, "topologyAll": 0, "topologyNot": 3923354 },
+    "ores_snow":      { "folder": "ores_snow", "density": 1000, "biome": 8,  "splat": 202, "topologyAny": 20972032, "topologyAll": 0, "topologyNot": 3923354 },
+    "v3_ores_jungle": { "folder": "ores",      "density": 1750, "biome": 16, "splat": 249, "topologyAny": 20972032, "topologyAll": 0, "topologyNot": 3800976 },
+    "ore_hqm":        { "folder": "ore_hqm",   "density": 10,   "biome": 15, "splat": -1,  "topologyAny": 20972032, "topologyAll": 0, "topologyNot": 3923354 },
+    "ore_hqm_jungle": { "folder": "ore_hqm",   "density": 80,   "biome": 16, "splat": 249, "topologyAny": 20972032, "topologyAll": 0, "topologyNot": 3923354 }
+  },
+  "folders": {
+    "ores":      { "stone": 2, "metal": 1, "sulfur": 1 },
+    "ores_sand": { "stone": 1, "metal": 1, "sulfur": 1 },
+    "ores_snow": { "stone": 1, "metal": 1, "sulfur": 1 },
+    "ore_hqm":   { "hqm": 1 }
+  }
+}

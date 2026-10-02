@@ -1,0 +1,29 @@
+{
+ "source": "Rust client bundles via scripts/extract-game-data.py",
+ "populations": {
+  "junkpiles_water": {
+   "density": 8.0,
+   "biome": -9,
+   "splat": -1,
+   "topologyAny": 262144,
+   "topologyAll": 0,
+   "topologyNot": 0
+  },
+  "junkpiles": {
+   "density": 50.0,
+   "biome": -1,
+   "splat": -1,
+   "topologyAny": 4096,
+   "topologyAll": 0,
+   "topologyNot": 33378198
+  },
+  "divesites": {
+   "density": 8.0,
+   "biome": -9,
+   "splat": -1,
+   "topologyAny": 262528,
+   "topologyAll": 0,
+   "topologyNot": 82944
+  }
+ }
+}

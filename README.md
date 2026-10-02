@@ -30,3 +30,5 @@ crosshair overlays or gamma tricks, so check the rules.
 ---
 
 RustScout is a free fan-made tool. It isn't affiliated with or endorsed by Facepunch Studios; Rust and Rust+ are theirs.
+
+Building from source, the zip version and project internals: see [DEVELOPMENT.md](DEVELOPMENT.md). Running it 24/7 on a server: [HOSTING.md](HOSTING.md).

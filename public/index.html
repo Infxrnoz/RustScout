@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RustScout</title>
+    <link rel="icon" type="image/png" href="/icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand"><span class="mark"></span>RUST<em>SCOUT</em></div>
+    <div id="event-chips" class="chips"></div>
+    <div class="spacer"></div>
+    <div class="pill" id="server-pill">
+        <i class="dot"></i><span id="server-name">No server</span><b id="server-pop"></b>
+        <svg id="pop-spark" viewBox="0 0 60 20" preserveAspectRatio="none"></svg>
+        <span class="muted small" id="wipe-age"></span>
+    </div>
+    <div class="pill clock-pill">
+        <b id="daynight">—</b><span id="clock">--:--</span><span class="muted" id="sun-eta"></span>
+        <div class="phase"><div id="phase-bar"></div></div>
+    </div>
+    <div class="pill status" id="conn">offline</div>
+    <i id="backend" class="backend" title="Backend connection"></i>
+</header>
+
+<div class="layout">
+    <nav class="rail">
+        <button data-panel="browse" data-tip="Server browser"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 6h-3a15 15 0 0 0-1.3-3.9A8 8 0 0 1 18.9 8zM12 4c.8 1.1 1.5 2.5 1.9 4h-3.8c.4-1.5 1.1-2.9 1.9-4zM4.3 14a8 8 0 0 1 0-4h3.4a17 17 0 0 0 0 4H4.3zm.8 2h3a15 15 0 0 0 1.3 3.9A8 8 0 0 1 5.1 16zm3-8h-3a8 8 0 0 1 4.3-3.9A15 15 0 0 0 8.1 8zM12 20c-.8-1.1-1.5-2.5-1.9-4h3.8c-.4 1.5-1.1 2.9-1.9 4zm2.3-6H9.7a15 15 0 0 1 0-4h4.6a15 15 0 0 1 0 4zm.3 5.9A15 15 0 0 0 15.9 16h3a8 8 0 0 1-4.3 3.9zm1.7-5.9a17 17 0 0 0 0-4h3.4a8 8 0 0 1 0 4h-3.4z"/></svg></button>
+        <div class="rail-sep"></div>
+        <button data-panel="shops" data-tip="Shops"><svg viewBox="0 0 24 24"><path d="M4 7h16l-1 4H5L4 7zm1 6h14v7H5v-7zm4 2v3h6v-3H9zM6 3h12l2 3H4l2-3z"/></svg></button>
+        <button data-panel="raid" data-tip="Raiding"><svg viewBox="0 0 24 24"><path d="M12 2c1 4 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg></button>
+        <button data-panel="team" data-tip="Team"><svg viewBox="0 0 24 24"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM1 20c0-4 4-6 8-6s8 2 8 6H1zm17 0c0-2-1-4-3-5 4 0 8 1 8 5h-5z"/></svg></button>
+        <button data-panel="threats" data-tip="Threats"><svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-8 8c0 3 1.5 5 3 6v3h2v-2h2v2h2v-2h2v2h2v-3c1.5-1 3-3 3-6a8 8 0 0 0-8-8zm-3 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm6 0a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg></button>
+        <button data-panel="tracked" data-tip="Tracked players"><svg viewBox="0 0 24 24"><path d="M11 2v3.1A7 7 0 0 0 5.1 11H2v2h3.1a7 7 0 0 0 5.9 5.9V22h2v-3.1a7 7 0 0 0 5.9-5.9H22v-2h-3.1A7 7 0 0 0 13 5.1V2h-2zm1 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
+        <button data-panel="events" data-tip="Events & alerts"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7v4l-2 3v1h18v-1l-2-3V9a7 7 0 0 0-7-7zm-2 17a2 2 0 0 0 4 0h-4z"/></svg></button>
+        <button data-panel="devices" data-tip="Smart devices"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></button>
+        <button data-panel="chat" data-tip="Team chat & bot"><svg viewBox="0 0 24 24"><path d="M3 4h18v12H8l-5 4V4zm4 5v2h2V9H7zm4 0v2h2V9h-2zm4 0v2h2V9h-2z"/></svg></button>
+        <div class="rail-sep"></div>
+        <button data-panel="tools" data-tip="Decay & crafting"><svg viewBox="0 0 24 24"><path d="M22 19 13 10a5 5 0 0 0-6-6l3 3-3 3-3-3a5 5 0 0 0 6 6l9 9 3-3z"/></svg></button>
+        <button data-panel="recycle" data-tip="Recycle"><svg viewBox="0 0 24 24"><path d="m12 3 3 5h-2v3h-2V8H9l3-5zM4 17l3-5 1 2 3-2-1 3 2 1-6 1H4zm16 0h-2l-6-1 2-1-1-3 3 2 1-2 3 5z"/></svg></button>
+        <button data-panel="breeder" data-tip="Plant breeder"><svg viewBox="0 0 24 24"><path d="M12 22v-9m0 0C12 7 7 4 3 5c0 5 4 8 9 8zm0 0c0-6 5-9 9-8 0 5-4 8-9 8z" stroke="currentColor" stroke-width="2" fill="none"/></svg></button>
+        <button data-panel="power" data-tip="Electricity"><svg viewBox="0 0 24 24"><path d="M7 2h10v4h-2v3h3v13H6V9h3V6H7V2zm5 9-3 5h2v3l3-5h-2v-3z"/></svg></button>
+        <div class="spacer"></div>
+        <button data-panel="settings" data-tip="Servers & settings"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 5v-2l-2.1-.5a7 7 0 0 0-.7-1.7l1.1-1.9-1.4-1.4-1.9 1.1a7 7 0 0 0-1.7-.7L13 3h-2l-.5 2.1a7 7 0 0 0-1.7.7L6.9 4.7 5.5 6.1l1.1 1.9a7 7 0 0 0-.7 1.7L3 11v2l2.1.5c.2.6.4 1.2.7 1.7l-1.1 1.9 1.4 1.4 1.9-1.1c.5.3 1.1.5 1.7.7L11 21h2l.5-2.1c.6-.2 1.2-.4 1.7-.7l1.9 1.1 1.4-1.4-1.1-1.9c.3-.5.5-1.1.7-1.7L21 13z"/></svg></button>
+    </nav>
+
+    <aside class="panel" id="panel">
+        <!-- BROWSE -->
+        <section data-panel="browse">
+            <h2>Server Browser</h2>
+            <div id="br-watch-wrap" style="display:none">
+                <h3>Watching</h3>
+                <div id="br-watch" class="list"></div>
+            </div>
+            <div id="br-detail" class="detail-card" style="display:none"></div>
+
+            <h3>Map files</h3>
+            <div class="row wrap"><button class="btn ghost small" id="mf-open" type="button">📂 Open a .map file</button><span class="hint small">or drop one anywhere on the window</span></div>
+            <p class="hint">See any map before you play it: monuments, recyclers, ore and junkpile hotspots, cards and more. Works offline, no server needed.</p>
+            <div id="mf-list" class="list"></div>
+
+            <h3>Find a server</h3>
+            <input id="br-q" type="search" placeholder="Search by name or IP… (rustafied, moose, 2x)">
+            <div class="filters">
+                <select id="br-region"><option value="">Any region</option><option>EU</option><option>NA</option><option>SA</option><option>AS</option><option>OC</option><option>AF</option></select>
+                <select id="br-flag"><option value="">Any wipe</option><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="monthly">Monthly</option><option value="vanilla">Vanilla</option></select>
+                <select id="br-sort"><option value="players">Most players</option><option value="wipe">Newest wipe</option><option value="name">Name</option></select>
+                <input id="br-min" type="number" min="0" placeholder="Min pop" class="num">
+            </div>
+            <p class="hint" id="br-count"></p>
+            <div id="br-key" class="key-card" style="display:none">
+                <b>Listing every server needs a free Steam Web API key.</b>
+                <p class="hint" id="br-key-msg"></p>
+                <p class="hint">Get one at <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener">steamcommunity.com/dev/apikey</a> (any domain name works), paste it here. Looking up a server by IP below works without one.</p>
+                <form id="br-key-form" class="row"><input id="br-key-input" placeholder="Steam Web API key"><button class="btn" type="submit">Save</button></form>
+            </div>
+            <div id="br-results" class="list"></div>
+
+            <h3>Look up by IP or address</h3>
+            <form id="br-lookup" class="row"><input id="br-addr" placeholder="1.2.3.4:28015 or play.server.com"><button class="btn" type="submit">Look up</button></form>
+            <div id="br-lookup-results" class="list" style="margin-top:6px"></div>
+        </section>
+
+        <!-- SHOPS -->
+        <section data-panel="shops">
+            <h2>Shops</h2>
+            <div class="stat-row" id="shop-stats"></div>
+            <input id="shop-search" type="search" placeholder="Search item… (sulfur, ak, hqm)">
+            <label class="check"><input type="checkbox" id="shop-instock" checked> In stock only</label>
+            <div id="shop-results" class="list"></div>
+            <h3>Recent Sales</h3>
+            <p class="hint">Detected from stock drops between polls.</p>
+            <div id="sales-feed" class="list"></div>
+        </section>
+
+        <!-- RAIDING -->
+        <section data-panel="raid">
+            <div class="row-between"><h2>Potential Targets</h2>
+                <select id="target-hours">
+                    <option value="1">1h</option>
+                    <option value="6" selected>6h</option>
+                    <option value="24">24h</option>
+                    <option value="0">wipe</option>
+                </select>
+            </div>
+            <p class="hint">Shops that took sulfur or sulfur ore as payment and still have an active vending machine — the owner collects the currency, so they're sitting on it.</p>
+            <div id="targets" class="list"></div>
+
+            <h2>Raid Cost Calculator</h2>
+            <div class="seg" id="raid-style">
+                <button data-style="meta">Meta</button>
+                <button data-style="cheapest">Cheapest</button>
+            </div>
+            <p class="hint" id="raid-style-hint"></p>
+            <details class="dropdown">
+                <summary><span>What can you use?</span><b id="tool-summary">All tools</b></summary>
+                <div id="tool-list"></div>
+            </details>
+            <div id="raid-targets"></div>
+            <div id="raid-result" class="raid-result"></div>
+        </section>
+
+        <!-- TEAM -->
+        <section data-panel="team">
+            <h2>Team</h2>
+            <div class="stat-row" id="team-summary"></div>
+            <div id="team-list" class="list"></div>
+            <h3>Activity</h3>
+            <div id="team-log" class="list log"></div>
+        </section>
+
+        <!-- THREATS -->
+        <section data-panel="threats">
+            <h2>Threats</h2>
+            <p class="hint">Everyone who has killed you, ranked. Pulled from Rust+ death notifications, with their public Steam profile.</p>
+            <p class="hint" id="threat-key-hint">Add a Steam Web API key in Settings to also see Rust hours and game bans.</p>
+            <div id="threat-list" class="list"></div>
+            <h3>Recent deaths</h3>
+            <div id="threat-recent" class="list log"></div>
+        </section>
+
+        <!-- TRACKED -->
+        <section data-panel="tracked">
+            <div class="row-between"><h2>Tracked Players</h2><button class="btn ghost small" id="tracked-refresh">Check now</button></div>
+            <p class="hint" id="tracked-status"></p>
+            <form id="tracked-new" class="row"><input placeholder="New group name (e.g. Neighbours)" required maxlength="40"><button class="btn small" type="submit">Create</button></form>
+            <div id="tracked-body" style="margin-top:8px"></div>
+            <div class="row-between"><h3>On the server now</h3><span class="muted small" id="tracked-count"></span></div>
+            <input id="tracked-filter" type="search" placeholder="Filter names…">
+            <div id="tracked-server" class="list log" style="max-height:260px;overflow-y:auto;margin-top:6px"></div>
+            <h3>Joins &amp; leaves</h3>
+            <div id="tracked-history" class="list log"></div>
+        </section>
+
+        <!-- EVENTS -->
+        <section data-panel="events">
+            <h2>Event Timers</h2>
+            <div id="event-timers" class="timers"></div>
+            <h3>Alerts</h3>
+            <div id="alert-log" class="list log"></div>
+            <h3>Event log</h3>
+            <div id="event-log" class="list log"></div>
+            <h3>Map layers</h3>
+            <div id="layer-toggles" class="two-col"></div>
+        </section>
+
+        <!-- DEVICES -->
+        <section data-panel="devices">
+            <div class="row-between"><h2>Smart Devices</h2><button class="btn ghost small" id="device-refresh">Refresh</button></div>
+            <div id="device-list"></div>
+            <details class="dropdown">
+                <summary><span>Add by entity ID</span><b>manual</b></summary>
+                <form id="device-form" class="form pad">
+                    <input name="entityId" placeholder="Entity ID" required>
+                    <select name="type"><option value="switch">Smart Switch</option><option value="alarm">Smart Alarm</option><option value="monitor">Storage Monitor</option></select>
+                    <input name="name" placeholder="Name">
+                    <button class="btn" type="submit">Add</button>
+                </form>
+            </details>
+        </section>
+
+        <!-- CHAT -->
+        <section data-panel="chat" class="chat-section">
+            <h2>Team Chat</h2>
+            <div id="chat-log" class="chat-log"></div>
+            <form id="chat-form" class="chat-form">
+                <input id="chat-input" placeholder="Message your team (or !command)" maxlength="128" autocomplete="off">
+                <button class="btn" type="submit">Send</button>
+            </form>
+            <p class="hint" id="bot-commands"></p>
+        </section>
+
+        <!-- TOOLS -->
+        <section data-panel="tools">
+            <h2>Decay Tracker</h2>
+            <p class="hint">Hit a decaying wall/door with a hammer, read its HP, and get a countdown to when it falls. Timers are saved per server and alert (toast + Discord) before it falls. Tip: right-click the map (long-press on a phone) to drop one right where the base is.</p>
+            <form id="decay-form" class="form">
+                <input id="decay-name" list="decay-options" placeholder="Structure or deployable (e.g. Stone Wall)" required>
+                <datalist id="decay-options"></datalist>
+                <div class="row"><input id="decay-hp" type="number" min="1" placeholder="Current HP"><input id="decay-label" placeholder="Label (optional)"></div>
+                <p class="hint" id="decay-preview"></p>
+                <div class="row wrap"><button class="btn" type="submit">Start countdown</button><button class="btn ghost" type="button" id="decay-place">Start + place on map</button><button class="btn ghost" type="button" id="decay-scan" title="Read the name and HP from a hammer screenshot">📷 Scan</button></div>
+                <p class="hint small" id="decay-scan-status">Or paste (Ctrl+V) / drop a screenshot of the hammer view to fill this in.</p>
+            </form>
+            <div id="decay-timers" class="list" style="margin-top:8px"></div>
+
+            <h2>Map Pins</h2>
+            <p class="hint">Right-click the map (long-press on a phone) to drop a pin: enemy bases, loot rooms, raid targets. Drag a pin to move it, click it to edit.</p>
+            <div id="pin-list" class="list"></div>
+
+            <h2>Crafting</h2>
+            <div class="row"><input id="craft-item" list="craft-options" placeholder="Item to craft"><input id="craft-qty" type="number" min="1" value="1" class="num"></div>
+            <datalist id="craft-options"></datalist>
+            <div id="craft-result"></div>
+        </section>
+
+        <!-- RECYCLE -->
+        <section data-panel="recycle">
+            <h2>Recycler</h2>
+            <p class="hint">What you get back from recycling.</p>
+            <div class="seg" id="recycle-mode"><button data-mode="r">Monument recycler</button><button data-mode="s">Safe zone</button></div>
+            <form id="recycle-form" class="row">
+                <input id="recycle-item" list="recycle-options" placeholder="Item">
+                <datalist id="recycle-options"></datalist>
+                <input id="recycle-qty" type="number" min="1" value="1" class="num">
+                <button class="btn" type="submit">Add</button>
+            </form>
+            <div id="recycle-bin" class="list" style="margin-top:8px"></div>
+            <div id="recycle-out"></div>
+            <button class="btn ghost small" id="recycle-clear" style="margin-top:8px">Clear</button>
+        </section>
+
+        <!-- BREEDER -->
+        <section data-panel="breeder">
+            <h2>Plant Breeder</h2>
+            <p class="hint">Paste your clones' genes (one per line), or scan screenshots of the plants' gene panel. It finds the best set of clones to plant around a centre plant to hit your target.</p>
+            <textarea id="breed-pool" rows="6" spellcheck="false"></textarea>
+            <div class="row"><button class="btn ghost small" id="breed-scan">📷 Scan screenshots</button><span class="hint small" id="breed-scan-status">or paste (Ctrl+V) / drop them on the box</span></div>
+            <p class="hint" id="breed-pool-count"></p>
+            <div class="row">
+                <label class="field">Target<input id="breed-target" maxlength="6" spellcheck="false"></label>
+                <label class="field">Max clones<input id="breed-max" type="number" min="1" max="6" class="num"></label>
+                <button class="btn" id="breed-solve">Find crosses</button>
+            </div>
+            <div class="legend"><span class="gene g-G">G</span>growth <span class="gene g-Y">Y</span>yield <span class="gene g-H">H</span>hardiness <span class="gene g-W">W</span>water <span class="gene g-X">X</span>empty</div>
+            <div id="breed-result"></div>
+        </section>
+
+        <!-- POWER -->
+        <section data-panel="power">
+            <h2>Electricity Planner</h2>
+            <p class="hint">List what you're powering. It sizes solar and batteries and tells you if the base survives the night.</p>
+            <h3>Loads</h3>
+            <div id="power-loads"></div>
+            <div class="row"><select id="power-device" class="grow"></select><button class="btn ghost small" id="power-add">Add</button></div>
+            <h3>Power</h3>
+            <div id="power-gen" class="gen-grid">
+                <label class="field">Solar panels<input type="number" min="0" data-k="panels"></label>
+                <label class="field">Avg rW / panel<input type="number" min="0" data-k="panelAvg"></label>
+                <label class="field">Wind turbines<input type="number" min="0" data-k="turbines"></label>
+                <label class="field">Avg rW / turbine<input type="number" min="0" data-k="turbineAvg"></label>
+                <label class="field">Small generators<input type="number" min="0" data-k="generators"></label>
+                <label class="check"><input type="checkbox" data-k="genNight"> Generator runs at night</label>
+                <label class="field">Small batteries<input type="number" min="0" data-k="batteries.small"></label>
+                <label class="field">Medium batteries<input type="number" min="0" data-k="batteries.medium"></label>
+                <label class="field">Large batteries<input type="number" min="0" data-k="batteries.large"></label>
+                <label class="field">Day (real min)<input type="number" min="1" data-k="dayMin"></label>
+                <label class="field">Night (real min)<input type="number" min="1" data-k="nightMin"></label>
+                <button class="btn ghost small" id="power-clock" type="button">Use server clock</button>
+            </div>
+            <div id="power-result"></div>
+            <h3>Crafting list</h3>
+            <p class="hint">Everything in this plan (devices, panels, turbines, generators, batteries) plus any wiring parts below, broken down to raw materials.</p>
+            <div id="power-bill"></div>
+        </section>
+
+        <!-- SETTINGS -->
+        <section data-panel="settings">
+            <h2>Servers</h2>
+            <p class="hint" id="fcm-status"></p>
+            <div id="server-list" class="list"></div>
+            <details class="dropdown">
+                <summary><span>Add server manually</span><b>ip + token</b></summary>
+                <form id="server-form" class="form pad">
+                    <input name="name" placeholder="Name (optional)">
+                    <input name="ip" placeholder="IP" required>
+                    <input name="port" placeholder="App port" required>
+                    <input name="playerId" placeholder="Steam ID" required>
+                    <input name="playerToken" placeholder="Player token" required>
+                    <button type="submit" class="btn">Add &amp; connect</button>
+                </form>
+            </details>
+            <p class="hint">New server: in game <b>ESC → Rust+ → Pair with server</b> and it appears here.</p>
+
+            <h2>Integrations</h2>
+            <div class="form">
+                <label class="field">Discord webhook URL<input id="set-webhook" placeholder="https://discord.com/api/webhooks/…"></label>
+                <button class="btn ghost small" id="webhook-test" type="button">Send test message</button>
+                <label class="field">Steam Web API key (optional)<input id="set-steamkey" placeholder="steamcommunity.com/dev/apikey"></label>
+                <label class="field">RustMaps API key (optional — heatmaps)<input id="set-rustmaps" placeholder="rustmaps.com → Dashboard → API key"></label>
+            </div>
+
+            <h2>Chat bot</h2>
+            <div class="row"><label class="check"><input type="checkbox" id="set-bot"> Answer commands in team chat</label>
+            <label class="field">Prefix<input id="set-prefix" maxlength="3" class="num"></label></div>
+
+            <h2>Discord bot</h2>
+            <p class="hint">Optional. Lets your Discord channel ask the app things (<code>!pop</code>, <code>!timers</code>, <code>!tracked</code>, <code>!help</code>…). Alerts are also posted through the bot when no webhook is set. Setup steps are in SETUP.md (section "Discord bot").</p>
+            <div class="form">
+                <label class="check"><input type="checkbox" id="set-dbot"> Run the Discord bot</label>
+                <label class="field">Bot token<input id="set-dbot-token" type="password" autocomplete="off" placeholder="Developer Portal → your app → Bot → Reset Token"></label>
+                <div class="row">
+                    <label class="field grow">Channel ID<input id="set-dbot-channel" inputmode="numeric" placeholder="Right-click channel → Copy Channel ID"></label>
+                    <label class="field">Prefix<input id="set-dbot-prefix" maxlength="3" class="num"></label>
+                </div>
+                <label class="check"><input type="checkbox" id="set-dbot-say"> Allow <code>!say</code> to post into in-game team chat</label>
+                <p class="hint" id="dbot-status"></p>
+            </div>
+
+            <section id="overlay-settings" hidden>
+                <h2>In-game overlay</h2>
+                <p class="hint">Shows over Rust in <b>Borderless/Windowed</b> mode. Click-through: it never takes your mouse or keyboard. In game: <b id="key-app">Ctrl + Alt + M</b> opens the whole app over the game, <b id="key-hud">Ctrl + Alt + O</b> toggles the HUD, <b id="key-crosshair">Ctrl + Alt + X</b> the crosshair. Some community servers don't allow crosshair overlays, so check the rules.</p>
+                <div class="row wrap">
+                    <label class="check"><input type="checkbox" id="ov-hud"> HUD (clock, pop, decay timer, alerts)</label>
+                    <select id="ov-corner"><option value="top-right">Top right</option><option value="top-left">Top left</option><option value="bottom-left">Bottom left</option><option value="bottom-right">Bottom right</option></select>
+                </div>
+                <label class="field">Show on<select id="ov-display"></select></label>
+                <h3>Crosshair</h3>
+                <div class="xh-editor">
+                    <canvas id="xh-preview" width="180" height="180"></canvas>
+                    <div class="form">
+                        <label class="check"><input type="checkbox" id="xh-on"> Show crosshair</label>
+                        <label class="field">Style<select id="xh-style"><option value="cross">Cross</option><option value="t">T</option><option value="circle">Circle</option><option value="dot">Dot</option></select></label>
+                        <label class="field">Size <span id="xh-size-v"></span><input type="range" id="xh-size" min="2" max="40"></label>
+                        <label class="field">Gap <span id="xh-gap-v"></span><input type="range" id="xh-gap" min="0" max="20"></label>
+                        <label class="field">Thickness <span id="xh-thickness-v"></span><input type="range" id="xh-thickness" min="1" max="8"></label>
+                        <label class="field">Opacity <span id="xh-opacity-v"></span><input type="range" id="xh-opacity" min="0.2" max="1" step="0.05"></label>
+                        <div class="row wrap"><label class="field">Colour<input type="color" id="xh-color"></label>
+                        <label class="check"><input type="checkbox" id="xh-outline"> Outline</label>
+                        <label class="check"><input type="checkbox" id="xh-dot"> Centre dot</label></div>
+                    </div>
+                </div>
+            </section>
+
+            <h2>Alerts</h2>
+            <label class="check"><input type="checkbox" id="set-desktop"> Desktop notifications when this tab is in the background</label>
+            <div class="row">
+                <label class="field">Sulfur sale alert at<input id="set-sulfur" type="number" min="0" class="num"></label>
+                <label class="field">TC upkeep alert (hours)<input id="set-upkeep" type="number" min="0" step="0.5" class="num"></label>
+                <label class="field">Decay timer alert (minutes before)<input id="set-decay" type="number" min="1" step="5" class="num"></label>
+            </div>
+            <div id="alert-matrix" class="matrix"></div>
+            <button class="btn" id="settings-save" style="margin-top:10px;width:100%">Save settings</button>
+        </section>
+    </aside>
+    <button class="panel-toggle" id="panel-toggle" title="Toggle panel"></button>
+
+    <main id="map">
+        <div class="empty" id="map-empty"><div><div class="big-mark"></div>Pair a server to load the map.</div></div>
+        <div class="readout" id="cursor-readout"></div>
+        <div class="preview-banner" id="preview-banner"></div>
+        <details class="heat-control" id="heat-control">
+            <summary><svg viewBox="0 0 24 24"><path d="M12 2c1 4 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg>Resource filters</summary>
+            <div class="seg res-tabs">
+                <button data-restab="markers" class="active">Markers</button>
+                <button data-restab="heat">Heatmap</button>
+            </div>
+            <div id="res-body"></div>
+            <div id="heat-body" hidden></div>
+        </details>
+    </main>
+</div>
+
+<div id="toasts"></div>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/js/core.js"></script>
+<script src="/js/resources.js"></script>
+<script src="/js/browse.js"></script>
+<script src="/js/shops.js"></script>
+<script src="/js/raid.js"></script>
+<script src="/js/team.js"></script>
+<script src="/js/threats.js"></script>
+<script src="/js/tracked.js"></script>
+<script src="/js/events.js"></script>
+<script src="/js/devices.js"></script>
+<script src="/js/chat.js"></script>
+<script src="/js/scan.js"></script>
+<script src="/js/pins.js"></script>
+<script src="/js/tools.js"></script>
+<script src="/js/recycle.js"></script>
+<script src="/js/breeder.js"></script>
+<script src="/js/power.js"></script>
+<script src="/js/crosshair.js"></script>
+<script src="/js/settings.js"></script>
+<script>boot();</script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+{
+    "name": "rustscout",
+    "productName": "RustScout",
+    "version": "1.0.7",
+    "private": true,
+    "description": "Free Rust+ companion for your desktop: live map, team, alerts, server browser, ore maps, raid and base tools.",
+    "main": "desktop/main.js",
+    "engines": {
+        "node": ">=18"
+    },
+    "scripts": {
+        "start": "node server.js",
+        "register": "node scripts/register.js",
+        "build-data": "node scripts/build-data.js",
+        "import-rustplusplus": "node scripts/import-rustplusplus.js",
+        "package": "node scripts/package.js",
+        "app": "electron .",
+        "dist": "electron-builder --win nsis",
+        "dist:personal": "electron-builder --win nsis -c.extraMetadata.rustscout.importOldVersion=true -c.win.artifactName=RustScout-Setup-${version}-personal.${ext}",
+        "icon": "node desktop/make-icon.js",
+        "gamma": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe -nologo -optimize -target:exe -r:System.Windows.Forms.dll -out:desktop\\gamma\\gamma.exe desktop\\gamma\\gamma.cs"
+    },
+    "dependencies": {
+        "@liamcottle/push-receiver": "^0.0.4",
+        "@liamcottle/rustplus.js": "file:vendor/liamcottle-rustplus.js-2.5.0.tgz",
+        "chrome-launcher": "^0.15.2",
+        "express": "^4.21.2",
+        "leaflet": "^1.9.4",
+        "ws": "^8.18.0"
+    },
+    "devDependencies": {
+        "electron": "^44.5.1",
+        "electron-builder": "^26.15.3"
+    },
+    "overrides": {
+        "protobufjs": "7.2.4"
+    },
+    "build": {
+        "appId": "com.rustscout.app",
+        "productName": "RustScout",
+        "copyright": "Free tool. Not affiliated with or endorsed by Facepunch Studios.",
+        "directories": {
+            "output": "dist-app"
+        },
+        "files": [
+            "package.json",
+            "server.js",
+            "src/**",
+            "public/**",
+            "desktop/**",
+            "!desktop/make-icon.js",
+            "!desktop/gamma/**",
+            "data/items.json",
+            "data/raid.json",
+            "data/game.json",
+            "data/ores.json",
+            "data/spawns.json",
+            "data/facilities.json",
+            "data/craft-yields.json",
+            "data/monuments.json"
+        ],
+        "win": {
+            "target": "nsis",
+            "icon": "desktop/icon.png",
+            "artifactName": "RustScout-Setup-${version}.${ext}"
+        },
+        "nsis": {
+            "oneClick": true,
+            "perMachine": false,
+            "runAfterFinish": true,
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true,
+            "shortcutName": "RustScout",
+            "deleteAppDataOnUninstall": false
+        },
+        "extraResources": [
+            {
+                "from": "desktop/gamma/gamma.exe",
+                "to": "gamma.exe"
+            }
+        ]
+    }
+}
