@@ -1,7 +1,7 @@
 {
     "name": "rustscout",
     "productName": "RustScout",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "private": true,
     "description": "Free Rust+ companion for your desktop: live map, team, alerts, server browser, ore maps, raid and base tools.",
     "main": "desktop/main.js",
@@ -33,7 +33,10 @@
         "electron-builder": "^26.15.3"
     },
     "overrides": {
-        "protobufjs": "7.2.4"
+        "protobufjs": "7.6.6",
+        "request-promise": "file:vendor/request-promise-fetch",
+        "request": "file:vendor/empty-request",
+        "uuid": "11.1.1"
     },
     "build": {
         "appId": "com.rustscout.app",
