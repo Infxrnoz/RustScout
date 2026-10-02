@@ -27,6 +27,12 @@ In-game hotkeys (the tray menu shows the exact keys if another app already uses 
 Overlays and night vision need Rust in **Borderless or Windowed** mode. Some community servers don't allow
 crosshair overlays or gamma tricks, so check the rules.
 
+## License
+
+RustScout is free to use, change and share for **non-commercial** purposes under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). You may not sell it, charge for it, or use it to make money.
+For any other use, ask [@Infxrnoz](https://github.com/Infxrnoz).
+
 ---
 
 RustScout is a free fan-made tool. It isn't affiliated with or endorsed by Facepunch Studios; Rust and Rust+ are theirs.
