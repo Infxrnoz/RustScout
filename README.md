@@ -1,40 +1,67 @@
+<div align="center">
+
+<img src="public/icon.png" width="96" alt="RustScout icon">
+
 # RustScout
 
-A free Rust+ companion for your Windows desktop: live map, team tracker, alerts to Discord, server browser,
-ore and resource maps, tracked players, map pins and decay timers, raid / crafting / power tools, an in-game
-HUD + custom crosshair, and night vision.
+**Rust+ on your desktop, without having your phone out mid-raid.**
 
-## Download
+[![Latest release](https://img.shields.io/github/v/release/Infxrnoz/RustScout?label=download)](https://github.com/Infxrnoz/RustScout/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Infxrnoz/RustScout/total)](https://github.com/Infxrnoz/RustScout/releases)
+[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE)
+![Windows](https://img.shields.io/badge/platform-Windows-0078d6)
 
-Get **RustScout-Setup.exe** from the [latest release](https://github.com/Infxrnoz/RustScout/releases/latest) and run it.
+</div>
 
-Windows may say *"Windows protected your PC"* because the installer isn't code-signed. Click **More info → Run anyway**.
+RustScout is a free Rust+ companion for Windows. Pair it with a server once and you get the live map, your team,
+smart alarms and a bunch of tools in one window, plus a small overlay you can pull up over the game.
+
+## What it does
+
+- **Live map** with your team, vending machines, monuments, ore and resource spots
+- **Team tracker** and tracked players, so you know who's online and where
+- **Alerts** for explosions, cargo, heli, Chinook, locked crates, smart alarms, teammate deaths and low TC upkeep, in the app and on Discord if you want
+- **Server browser** with pop, wipe dates and map previews
+- **Map pins and decay timers** so you stop forgetting to fill the TC
+- **Raid, crafting, power and gene breeding calculators**
+- **In-game HUD** with the clock, pop and your next decay timer
+- **Custom crosshair** and **night vision**
+
+## Install
+
+1. Grab **RustScout-Setup.exe** from the [latest release](https://github.com/Infxrnoz/RustScout/releases/latest).
+2. Run it. The installer isn't code-signed yet, so Windows may show *"Windows protected your PC"*. Hit **More info → Run anyway**.
 
 ## Getting started
 
-1. Open RustScout and click **Link Steam**, then sign in with Steam in the window that opens.
-2. In Rust: **ESC → Rust+ → Pair with server**. The server shows up in the app by itself.
+1. Open RustScout and click **Link Steam**, then sign in with Steam in the window that pops up.
+2. In Rust, go to **ESC → Rust+ → Pair with server**. The server shows up in RustScout on its own.
 
-In-game hotkeys (the tray menu shows the exact keys if another app already uses one):
+That's it. Anything you pair from now on gets picked up automatically.
 
-| Hotkey | Does |
+## Hotkeys
+
+| Keys | What it does |
 |---|---|
-| Ctrl + Alt + M | Open the app over the game (press again to go back) |
-| Ctrl + Alt + O | HUD: game clock, pop, decay timer, alerts |
-| Ctrl + Alt + X | Custom crosshair (design it in Settings) |
-| Ctrl + Alt + G / H | Night vision up / off |
+| `Ctrl` `Alt` `M` | Open RustScout over the game (press again to go back) |
+| `Ctrl` `Alt` `O` | Toggle the HUD |
+| `Ctrl` `Alt` `X` | Toggle the crosshair (you design it in Settings) |
+| `Ctrl` `Alt` `G` / `H` | Night vision brighter / off |
 
-Overlays and night vision need Rust in **Borderless or Windowed** mode. Some community servers don't allow
-crosshair overlays or gamma tricks, so check the rules.
+If another app already uses one of these, the tray menu shows which keys RustScout picked instead.
+
+## Good to know
+
+- The overlay and night vision only work with Rust in **Borderless** or **Windowed** mode.
+- Some community servers don't allow crosshair overlays or gamma changes. Check the server rules first.
+- Want it running 24/7 on a box somewhere? See [HOSTING.md](HOSTING.md).
+- Building from source or poking at the internals? See [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License
 
-RustScout is free to use, change and share for **non-commercial** purposes under the
-[PolyForm Noncommercial License 1.0.0](LICENSE). You may not sell it, charge for it, or use it to make money.
-For any other use, ask [@Infxrnoz](https://github.com/Infxrnoz).
+Free to use, change and share for **non-commercial** use under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+You can't sell it or make money from it. For anything else, ask [@Infxrnoz](https://github.com/Infxrnoz).
 
 ---
 
-RustScout is a free fan-made tool. It isn't affiliated with or endorsed by Facepunch Studios; Rust and Rust+ are theirs.
-
-Building from source, the zip version and project internals: see [DEVELOPMENT.md](DEVELOPMENT.md). Running it 24/7 on a server: [HOSTING.md](HOSTING.md).
+<sub>RustScout is a fan-made project and isn't affiliated with or endorsed by Facepunch Studios. Rust and Rust+ belong to them.</sub>
