@@ -5,7 +5,7 @@
 # RustScout
 
 **Rust+ on your desktop, without having your phone out mid-raid.**
-
+For help dm infxrno.jpg on discord.
 [![Latest release](https://img.shields.io/github/v/release/Infxrnoz/RustScout?label=download)](https://github.com/Infxrnoz/RustScout/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Infxrnoz/RustScout/total)](https://github.com/Infxrnoz/RustScout/releases)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE)
